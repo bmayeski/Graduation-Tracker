@@ -4,7 +4,6 @@
    ============================================================ */
 
 'use strict';
-
 const UI = (() => {
 
   // ── Bootstrap (called after data loads) ──────────────────
@@ -25,7 +24,6 @@ const UI = (() => {
   function navigate(viewId) {
     App.setState({ currentView: viewId });
 
-    // Update active nav item
     document.querySelectorAll('.nav-item').forEach(el => {
       el.classList.toggle('active', el.dataset.view === viewId);
     });
@@ -36,12 +34,7 @@ const UI = (() => {
     switch (viewId) {
       case 'dashboard':   container.appendChild(Views.dashboard()); break;
       case 'students':    container.appendChild(Views.studentList()); break;
-      case 'honor':       container.appendChild(Views.categoryView('honor',    'Honor Grad',         'ti-star',           '--cat-honor'));    break;
-      case 'cte':         container.appendChild(Views.categoryView('cte',      'CTE',                'ti-tools',          '--cat-cte'));       break;
-      case 'avid':        container.appendChild(Views.categoryView('avid',     'AVID',               'ti-books',          '--cat-avid'));      break;
-      case 'asb':         container.appendChild(Views.categoryView('asb',      'ASB',                'ti-flag',           '--cat-asb'));       break;
-      case 'military':    container.appendChild(Views.categoryView('military', 'Military',           'ti-shield-chevron', '--cat-military')); break;
-      case 'special':     container.appendChild(Views.categoryView('special',  'Special Recognition','ti-award',          '--cat-special'));   break;
+      case 'categories':  container.appendChild(Views.categoriesView()); break;
       case 'not-walking': container.appendChild(Views.notWalkingView()); break;
       case 'seating':     container.appendChild(Views.seatingView()); break;
       case 'users':       container.appendChild(Views.usersView()); break;
@@ -54,12 +47,8 @@ const UI = (() => {
   function _updateAllBadges() {
     const stats = App.getStats();
     _setBadge('badge-students', stats.total);
-    _setBadge('badge-honor',    stats.honor);
-    _setBadge('badge-cte',      stats.cte);
-    _setBadge('badge-avid',     stats.avid);
-    _setBadge('badge-asb',      stats.asb);
-    _setBadge('badge-military', stats.military);
     _setBadge('badge-notwalk',  stats.notWalking);
+    _setBadge('badge-nongrad',  stats.nonGrad);
   }
   function updateBadges() { _updateAllBadges(); }
 
@@ -73,9 +62,14 @@ const UI = (() => {
     if (!user) return;
     const parts  = (user.email || '').split('@')[0].split('.');
     const initials = parts.map(p => p[0] || '').join('').toUpperCase().slice(0,2) || '??';
-    document.getElementById('user-avatar').textContent = initials;
-    document.getElementById('user-name').textContent   = user.email || 'Unknown';
-    document.getElementById('user-role').textContent   = user.role  || 'viewer';
+    
+    const avatarEl = document.getElementById('user-avatar');
+    const nameEl   = document.getElementById('user-name');
+    const roleEl   = document.getElementById('user-role');
+    
+    if(avatarEl) avatarEl.textContent = initials;
+    if(nameEl) nameEl.textContent = user.email || 'Unknown';
+    if(roleEl) roleEl.textContent = user.role || 'viewer';
   }
 
   // ── Role Visibility ───────────────────────────────────────
@@ -92,7 +86,6 @@ const UI = (() => {
     const box = document.getElementById('modal-box');
     box.className = 'modal-box' + (opts.size ? ` modal-${opts.size}` : '');
     document.getElementById('modal-overlay').classList.remove('hidden');
-    // Run any init fn passed in options
     if (opts.onOpen) opts.onOpen();
   }
 
@@ -109,7 +102,6 @@ const UI = (() => {
 
   // ── Toast ─────────────────────────────────────────────────
   const TOAST_ICONS = { success: 'ti-circle-check', error: 'ti-alert-circle', info: 'ti-info-circle', warning: 'ti-alert-triangle' };
-
   function toast(message, type = 'info', duration = 3500) {
     const container = document.getElementById('toast-container');
     const div = document.createElement('div');
@@ -131,7 +123,7 @@ const UI = (() => {
       </div>
       <div class="modal-footer">
         <button class="btn btn-ghost" onclick="UI.closeModalDirect()">Cancel</button>
-        <button class="btn btn-danger" id="confirm-ok-btn">Delete</button>
+        <button class="btn btn-danger" id="confirm-ok-btn">Confirm</button>
       </div>`;
     openModal('Confirm Action', body);
     setTimeout(() => {
@@ -140,16 +132,30 @@ const UI = (() => {
     }, 50);
   }
 
-  // ── Helpers: HTML builders ────────────────────────────────
+  // ── Color Helper ──────────────────────────────────────────
+  function hexToRgba(hex, alpha) {
+    if (!hex) return `rgba(100, 100, 100, ${alpha})`;
+    hex = hex.replace('#', '');
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
+  // ── Badges ────────────────────────────────────────────────
   function categoryBadges(student) {
     const cats = [];
-    if (student.honor)    cats.push(`<span class="badge badge-honor">    <span class="ti ti-star"></span> Honor</span>`);
-    if (student.cte)      cats.push(`<span class="badge badge-cte">      <span class="ti ti-tools"></span> CTE</span>`);
-    if (student.avid)     cats.push(`<span class="badge badge-avid">     <span class="ti ti-books"></span> AVID</span>`);
-    if (student.asb)      cats.push(`<span class="badge badge-asb">      <span class="ti ti-flag"></span> ASB</span>`);
-    if (student.military) cats.push(`<span class="badge badge-military"> <span class="ti ti-shield-chevron"></span> Military</span>`);
-    if (student.special)  cats.push(`<span class="badge badge-special">  <span class="ti ti-award"></span> Special</span>`);
-    if (student.notWalking) cats.push(`<span class="badge badge-notwalk"><span class="ti ti-walk-off"></span> Not Walking</span>`);
+    
+    App.getCategories().forEach(c => {
+       if (student[c.id]) {
+          cats.push(`<span class="badge" style="background:${UI.hexToRgba(c.color, 0.15)}; color:${c.color}; border: 1px solid ${UI.hexToRgba(c.color, 0.3)};"><span class="ti ti-${c.icon}"></span> ${c.label}</span>`);
+       }
+    });
+
+    if (student.notWalking || student.nonGrad) {
+       cats.push(`<span class="badge badge-notwalk"><span class="ti ti-walk-off"></span> Not Walking</span>`);
+    }
+    
     return cats.join(' ');
   }
 
@@ -168,7 +174,7 @@ const UI = (() => {
   return {
     bootstrap, toggleSidebar, navigate, updateBadges,
     openModal, closeModal, closeModalDirect, toast, confirm,
-    categoryBadges, el
+    categoryBadges, el, hexToRgba
   };
 })();
 
@@ -181,75 +187,67 @@ const Views = (() => {
   // ── Dashboard ─────────────────────────────────────────────
   function dashboard() {
     const stats = App.getStats();
+    const students = App.getStudents();
+    const categories = App.getCategories();
+    
+    // This is the variable you were looking for!
+    const categoryCards = categories.map(c => {
+      const count = students.filter(s => s[c.id]).length;
+      return `
+        <div class="stat-card clickable" style="--accent: ${c.color}" 
+             onclick="UI.navigate('categories'); setTimeout(() => { 
+                const btn = document.querySelector('.tab-btn[data-cat=\\'${c.id}\\']');
+                if (btn) btn.click();
+             }, 100);">
+          <div class="stat-label">${c.label}</div>
+          <div class="stat-value">${count}</div>
+          <span class="stat-icon ti ti-${c.icon}"></span>
+        </div>
+      `;
+    }).join('');
+
+    // Administrative: Static items
+    const adminItems = [
+      {label: 'Fees Paid', icon: 'currency-dollar'},
+      {label: 'VAL/SAL', icon: 'trophy'},
+      {label: 'Cap & Gowns', icon: 'shirt'},
+      {label: 'Chromebooks', icon: 'device-laptop'},
+      {label: 'Career Met', icon: 'briefcase'},
+      {label: 'Tech Met', icon: 'cpu'},
+      {label: 'Final Transcript', icon: 'file-text'},
+      {label: 'Diplomas Left', icon: 'certificate'}
+    ];
+    const adminCards = adminItems.map(item => `
+        <div class="stat-card" style="--accent: #999">
+          <div class="stat-label">${item.label}</div>
+          <div class="stat-value">—</div>
+          <span class="stat-icon ti ti-${item.icon}"></span>
+        </div>`).join('');
+
     const wrap  = document.createElement('div');
     wrap.innerHTML = `
-      <div class="page-header">
-        <div class="page-title-block">
-          <h1>Dashboard</h1>
-          <p>Graduation class overview and quick stats</p>
-        </div>
-        <div class="page-actions">
-          <button class="btn btn-primary" onclick="Students.openAddModal()">
-            <span class="ti ti-plus"></span> Add Student
-          </button>
+      <div class="page-header"><h1>Dashboard</h1></div>
+
+      <div class="stats-section">
+        <div class="stats-grid">
+          <div class="stat-card" style="--accent: var(--brand-grad)"><div class="stat-label">Total</div><div class="stat-value">${stats.total}</div><span class="stat-icon ti ti-users"></span></div>
+          <div class="stat-card" style="--accent: var(--accent-green)"><div class="stat-label">Walking</div><div class="stat-value">${stats.walking}</div><span class="stat-icon ti ti-walk"></span></div>
+          <div class="stat-card" style="--accent: var(--accent-red)"><div class="stat-label">Not Walking</div><div class="stat-value">${stats.notWalking}</div><span class="stat-icon ti ti-walk-off"></span></div>
+          <div class="stat-card" style="--accent: var(--accent-red)"><div class="stat-label">Non-Grad</div><div class="stat-value">${stats.nonGrad || 0}</div><span class="stat-icon ti ti-school-off"></span></div>
         </div>
       </div>
 
-      <div class="stats-grid">
-        <div class="stat-card" style="--accent: var(--brand-grad)">
-          <div class="stat-label">Total Students</div>
-          <div class="stat-value">${stats.total}</div>
-          <div class="stat-sub">registered</div>
-          <span class="stat-icon ti ti-users"></span>
-        </div>
-        <div class="stat-card" style="--accent: var(--accent-green)">
-          <div class="stat-label">Walking</div>
-          <div class="stat-value">${stats.walking}</div>
-          <div class="stat-sub">participating</div>
-          <span class="stat-icon ti ti-walk"></span>
-        </div>
-        <div class="stat-card" style="--accent: var(--accent-red)">
-          <div class="stat-label">Not Walking</div>
-          <div class="stat-value">${stats.notWalking}</div>
-          <div class="stat-sub">not participating</div>
-          <span class="stat-icon ti ti-walk-off"></span>
-        </div>
-        <div class="stat-card" style="--accent: var(--cat-honor)">
-          <div class="stat-label">Honor Grad</div>
-          <div class="stat-value">${stats.honor}</div>
-          <span class="stat-icon ti ti-star"></span>
-        </div>
-        <div class="stat-card" style="--accent: var(--cat-cte)">
-          <div class="stat-label">CTE</div>
-          <div class="stat-value">${stats.cte}</div>
-          <span class="stat-icon ti ti-tools"></span>
-        </div>
-        <div class="stat-card" style="--accent: var(--cat-avid)">
-          <div class="stat-label">AVID</div>
-          <div class="stat-value">${stats.avid}</div>
-          <span class="stat-icon ti ti-books"></span>
-        </div>
-        <div class="stat-card" style="--accent: var(--cat-asb)">
-          <div class="stat-label">ASB</div>
-          <div class="stat-value">${stats.asb}</div>
-          <span class="stat-icon ti ti-flag"></span>
-        </div>
-        <div class="stat-card" style="--accent: var(--cat-military)">
-          <div class="stat-label">Military</div>
-          <div class="stat-value">${stats.military}</div>
-          <span class="stat-icon ti ti-shield-chevron"></span>
-        </div>
+      <div class="stats-divider"><h3>Cord Groups</h3></div>
+      <div class="stats-section">
+        <div class="stats-grid">${categoryCards}</div>
       </div>
 
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Recent Students</span>
-          <button class="btn btn-ghost btn-sm" onclick="UI.navigate('students')">
-            View All <span class="ti ti-arrow-right"></span>
-          </button>
-        </div>
-        ${_recentStudentsTable()}
-      </div>`;
+      <div class="stats-divider"><h3>Administrative</h3></div>
+      <div class="stats-section">
+        <div class="stats-grid">${adminCards}</div>
+      </div>
+
+      <div class="card">${_recentStudentsTable()}</div>`;
     return wrap;
   }
 
@@ -285,42 +283,99 @@ const Views = (() => {
     return wrap;
   }
 
-  // ── Category View ─────────────────────────────────────────
-  function categoryView(catId, label, icon, colorVar) {
-    const students = App.getStudents().filter(s => s[catId]);
+  // ── Unified Categories View with Tabs ─────────────────────
+  function categoriesView() {
+    const categories = App.getCategories(); 
     const wrap = document.createElement('div');
+    
+    const tabsHtml = categories.map((cat, index) => {
+      const isActive = index === 0 ? 'active' : '';
+      const bgRgba = UI.hexToRgba(cat.color, 0.15); 
+      const borderRgba = UI.hexToRgba(cat.color, 0.3);
+      const activeStyle = isActive ? `background: ${bgRgba}; border-color: ${borderRgba}; color: ${cat.color};` : '';
+
+      return `
+        <button class="tab-btn ${isActive}" 
+                data-cat="${cat.id}" 
+                onclick="Views.switchCategoryTab('${cat.id}', this)"
+                style="${activeStyle}"
+                data-color="${cat.color}">
+          <span class="ti ti-${cat.icon}" style="color: ${cat.color};"></span> 
+          ${cat.label}
+        </button>
+      `;
+    }).join('');
+
     wrap.innerHTML = `
       <div class="page-header">
         <div class="page-title-block">
-          <h1 style="display:flex;align-items:center;gap:10px">
-            <span class="ti ${icon}" style="color:var(${colorVar})"></span> ${label}
-          </h1>
-          <p>${students.length} student${students.length !== 1 ? 's' : ''} in this category</p>
+          <h1>Student Groups & Honors</h1>
+          <p>Manage program rosters and recognitions</p>
         </div>
-        <div class="page-actions">
-          ${App.canEdit(catId) ? `<button class="btn btn-primary" onclick="Students.openAddModal('${catId}')">
-            <span class="ti ti-plus"></span> Add Student
-          </button>` : ''}
-        </div>
+        <div class="page-actions" id="cat-action-container"></div>
       </div>
-      ${_categoryTable(students, catId, colorVar)}`;
+      
+      <div class="tab-bar">
+        ${tabsHtml}
+      </div>
+
+      <div id="category-table-container"></div>
+    `;
+
+    setTimeout(() => {
+      if (categories.length > 0) {
+        switchCategoryTab(categories[0].id, wrap.querySelector('.tab-btn.active'));
+      }
+    }, 0);
+
     return wrap;
   }
 
-  function _categoryTable(students, catId, colorVar) {
-    if (!students.length) return `
-      <div class="empty-state">
-        <span class="empty-icon ti ti-user-off"></span>
-        <h3>No students in this category</h3>
-        <p>Add students to populate this list.</p>
-      </div>`;
+  // ── Tab Switcher Logic ────────────────────────────────────
+  function switchCategoryTab(catId, btnEl) {
+    document.querySelectorAll('.tab-bar .tab-btn').forEach(btn => {
+      btn.classList.remove('active');
+      btn.style.background = '';
+      btn.style.borderColor = 'transparent';
+      btn.style.color = 'var(--text-secondary)';
+    });
+    
+    btnEl.classList.add('active');
+    const color = btnEl.dataset.color;
+    btnEl.style.background = UI.hexToRgba(color, 0.15);
+    btnEl.style.borderColor = UI.hexToRgba(color, 0.3);
+    btnEl.style.color = color;
+
+    const actionContainer = document.getElementById('cat-action-container');
+    if (actionContainer) {
+       actionContainer.innerHTML = App.canEdit(catId) ? 
+          `<button class="btn btn-secondary" onclick="Students.openBulkAddModal('${catId}')">
+             <span class="ti ti-users"></span> Bulk Import IDs
+           </button>
+           <button class="btn btn-primary" onclick="Students.openAddModal('${catId}')">
+             <span class="ti ti-plus"></span> Add Single
+           </button>` : '';
+    }
+
+    const students = App.getStudents().filter(s => s[catId]);
+    const container = document.getElementById('category-table-container');
+    
+    if (!students.length) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <span class="empty-icon ti ti-user-off"></span>
+          <h3>No students found</h3>
+          <p>No one is currently flagged for this category.</p>
+        </div>`;
+      return;
+    }
 
     const rows = students.map(s => `
       <tr>
         <td class="mono">${s.studentId}</td>
         <td>${s.lastName}, ${s.firstName}</td>
         <td>${UI.categoryBadges(s)}</td>
-        <td>${s.notWalking ? '<span class="badge badge-notwalk">Not Walking</span>' : '<span style="color:var(--accent-green);font-size:12px">✓ Walking</span>'}</td>
+        <td>${(s.notWalking || s.nonGrad) ? '<span class="badge badge-notwalk">Not Walking</span>' : '<span style="color:var(--accent-green);font-size:12px">✓ Walking</span>'}</td>
         <td>
           <div class="row-actions">
             <button class="btn btn-ghost btn-sm btn-icon" title="Edit" onclick="Students.openEditModal('${s.studentId}')">
@@ -330,31 +385,27 @@ const Views = (() => {
         </td>
       </tr>`).join('');
 
-    return `<div class="card" style="border-top: 3px solid var(${colorVar})">
-      <div class="table-wrap">
-        <table class="data-table">
-          <thead><tr><th>Student ID</th><th>Name</th><th>All Categories</th><th>Status</th><th></th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
-    </div>`;
+    container.innerHTML = `
+      <div class="card" style="border-top: 3px solid ${color}">
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th>Student ID</th><th>Name</th><th>All Categories</th><th>Status</th><th></th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>`;
   }
 
   // ── Not Walking ───────────────────────────────────────────
   function notWalkingView() {
-    const students = App.getStudents().filter(s => s.notWalking);
+    const students = App.getStudents().filter(s => s.notWalking || s.nonGrad);
     const wrap = document.createElement('div');
     wrap.innerHTML = `
       <div class="page-header">
         <div class="page-title-block">
-          <h1><span class="ti ti-walk-off" style="color:var(--accent-red)"></span> Not Walking</h1>
-          <p>${students.length} student${students.length !== 1 ? 's' : ''} not participating in the ceremony</p>
+          <h1><span class="ti ti-walk-off" style="color:var(--accent-red)"></span> Not Walking / Non-Grads</h1>
+          <p>${students.length} student${students.length !== 1 ? 's' : ''} not participating</p>
         </div>
-        ${App.isAdmin() ? `<div class="page-actions">
-          <button class="btn btn-primary" onclick="Students.openAddModal('notWalking')">
-            <span class="ti ti-plus"></span> Add Student
-          </button>
-        </div>` : ''}
       </div>
       ${students.length ? `
         <div class="card" style="border-top: 3px solid var(--accent-red)">
@@ -385,7 +436,7 @@ const Views = (() => {
     return wrap;
   }
 
-  // ── Seating / Users / Settings — delegated to other modules
+  // ── Seating / Users / Settings ────────────────────────────
   function seatingView()  { const w = document.createElement('div'); Seating.render(w);  return w; }
   function usersView()    { const w = document.createElement('div'); UsersAdmin.render(w); return w; }
   function settingsView() {
@@ -417,6 +468,6 @@ const Views = (() => {
     return wrap;
   }
 
-  return { dashboard, studentList, categoryView, notWalkingView, seatingView, usersView, settingsView };
+  return { dashboard, studentList, categoriesView, switchCategoryTab, notWalkingView, seatingView, usersView, settingsView };
 })();
 </script>
