@@ -1,0 +1,208 @@
+<script>
+/* ============================================================
+   SEATING.JS  —  Visual seating chart renderer
+   ============================================================ */
+
+const Seating = (() => {
+  let currentConfig = null;
+
+  async function render(container) {
+     container.innerHTML = `
+      <div class="page-header">
+        <div class="page-title-block">
+          <h1>Seating Chart</h1>
+          <p>Visual map of ceremony seating</p>
+        </div>
+        <div class="page-actions">
+           <button class="btn btn-ghost" onclick="Seating.openConfigModal()">
+             <span class="ti ti-settings"></span> Layout Config
+           </button>
+           <button class="btn btn-secondary" onclick="Seating.generate(false)" title="Keeps manually assigned seats">
+             <span class="ti ti-wand"></span> Auto-Assign Missing
+           </button>
+           <button class="btn btn-danger" onclick="Seating.generate(true)" title="Clears all seats and starts over">
+             <span class="ti ti-refresh"></span> Overwrite All
+           </button>
+        </div>
+      </div>
+      <div id="seating-canvas"><div class="loading-screen" style="height:200px"><div class="spinner"></div></div></div>
+     `;
+
+     try {
+       const res = await App.Server.getSeatingChart();
+       currentConfig = res.config;
+       _renderChart(res.config, res.seatMap);
+     } catch(err) {
+       document.getElementById('seating-canvas').innerHTML = `<div class="empty-state"><span class="ti ti-alert-triangle empty-icon"></span><h3>Error loading</h3><p>${err.message}</p></div>`;
+     }
+  }
+
+  function _renderChart(config, seatMap) {
+     const canvas = document.getElementById('seating-canvas');
+     
+     // Pre-calculate row offsets based on cumulative seats
+     let rowOffsets = [];
+     let currentOffset = 0;
+     const maxRows = Math.max(config.sections[0].rows.length, config.sections[1].rows.length);
+     for(let r=0; r<maxRows; r++) {
+        rowOffsets.push(currentOffset);
+        currentOffset += (config.sections[0].rows[r] || 0) + (config.sections[1].rows[r] || 0);
+     }
+     
+     let sectionsHtml = config.sections.map((sec, secIndex) => {
+        let rowsHtml = '';
+        let totalSeats = 0;
+        
+        sec.rows.forEach((seatCount, rowIndex) => {
+           let r = rowIndex + 1;
+           
+           // Check if this is the last row to rename it to JH
+           let isLastRow = (rowIndex === sec.rows.length - 1);
+           let displayRow = isLastRow ? `${sec.id}JH` : `${sec.id}${r}`;
+           
+           let offset = rowOffsets[rowIndex];
+           totalSeats += seatCount;
+           let seatsHtml = '';
+           
+           for(let s = 0; s < seatCount; s++) {
+              let physicalSeat;
+              if (sec.id === 'L') {
+                 physicalSeat = offset + ((seatCount - 1 - s) * 2) + 1; // Odds
+              } else {
+                 physicalSeat = offset + (seatCount - s) * 2; // Evens
+              }
+
+              const seatId = `${displayRow}-${physicalSeat}`;
+              const student = seatMap[seatId];
+              
+              let classes = 'seat';
+              let tooltip = '';
+              
+              if(student) {
+                 classes += ` occupied`;
+                 if(student.honor) classes += ' honor';
+                 else if(student.military) classes += ' military';
+                 else if(student.asb) classes += ' asb';
+                 tooltip = `onmouseenter="Seating.showTooltip(event, '${student.firstName.replace(/'/g, "\\'")} ${student.lastName.replace(/'/g, "\\'")}', '${student.studentId}', '${displayRow}', '${physicalSeat}')" onmouseleave="Seating.hideTooltip()"`;
+              } else {
+                 classes += ` empty`;
+                 tooltip = `onmouseenter="Seating.showTooltip(event, 'Empty Seat', '', '${displayRow}', '${physicalSeat}')" onmouseleave="Seating.hideTooltip()"`;
+              }
+              
+              seatsHtml += `<div class="${classes}" ${tooltip}></div>`;
+           }
+           
+           if (sec.id === 'L') {
+             // Left section: Label goes on the RIGHT side of the seats (closest to center aisle)
+             rowsHtml += `
+               <div class="seat-row">
+                  <div class="seats-in-row">${seatsHtml}</div>
+                  <div class="row-label" style="text-align: left; margin-left: 4px;">${displayRow}</div>
+               </div>
+             `;
+           } else {
+             // Right section: Label goes on the LEFT side of the seats (closest to center aisle)
+             rowsHtml += `
+               <div class="seat-row">
+                  <div class="row-label" style="margin-right: 4px;">${displayRow}</div>
+                  <div class="seats-in-row">${seatsHtml}</div>
+               </div>
+             `;
+           }
+        });
+        
+        return `
+          <div class="section-block">
+             <div class="section-label" style="justify-content: ${sec.id === 'L' ? 'flex-end' : 'flex-start'};">
+                ${sec.label} <span class="section-count">${totalSeats} seats</span>
+             </div>
+             <div class="seat-rows" style="align-items: ${sec.id === 'L' ? 'flex-end' : 'flex-start'};">
+                ${rowsHtml}
+             </div>
+          </div>
+        `;
+     }).join('');
+
+     canvas.innerHTML = `
+        <div class="seating-page" style="align-items: center;">
+           <div class="stage-banner" style="width: 100%; max-width: 600px;">Stage / Podium</div>
+           <div class="sections-container" style="justify-content: center; width: 100%;">${sectionsHtml}</div>
+        </div>
+     `;
+  }
+
+  function openConfigModal() {
+    if(!currentConfig) return;
+    let html = `<div id="seating-config-wrap"><p class="text-muted mb-16" style="font-size:13px; line-height:1.5">Define seats per row, separated by commas.</p>`;
+    currentConfig.sections.forEach((sec, idx) => {
+       html += `
+         <div class="form-group mb-16">
+           <label class="form-label">${sec.label} - Seats per Row</label>
+           <textarea class="form-textarea mono" id="cfg-sec-${idx}" rows="2">${sec.rows.join(', ')}</textarea>
+         </div>`;
+    });
+    html += `
+        <div class="form-group mb-16">
+           <label class="toggle-chip ${currentConfig.honorFront ? 'checked' : ''}" style="--chip-color: var(--cat-honor); width:fit-content;">
+             <input type="checkbox" id="cfg-honor" ${currentConfig.honorFront ? 'checked' : ''} onchange="this.parentElement.classList.toggle('checked', this.checked)">
+             <span class="ti ti-star"></span> Seat Honor Grads in Front
+           </label>
+        </div>
+        <div class="modal-footer" style="margin-top:0">
+          <button type="button" class="btn btn-ghost" onclick="UI.closeModalDirect()">Cancel</button>
+          <button type="button" class="btn btn-primary" onclick="Seating.saveConfig()">Save Configuration</button>
+        </div>
+      </div>`;
+    UI.openModal('Seating Layout Config', html);
+  }
+
+  async function saveConfig() {
+    let newConfig = JSON.parse(JSON.stringify(currentConfig)); 
+    newConfig.sections.forEach((sec, idx) => {
+       sec.rows = document.getElementById(`cfg-sec-${idx}`).value.split(',').map(n => parseInt(n.trim(), 10)).filter(n => !isNaN(n) && n > 0);
+    });
+    newConfig.honorFront = document.getElementById('cfg-honor').checked;
+    
+    try {
+      const res = await App.Server.saveSeatingConfig(newConfig);
+      if(res.success) {
+         currentConfig = newConfig;
+         UI.closeModalDirect();
+         UI.navigate('seating'); 
+      }
+    } catch(err) { UI.toast(err.message, 'error'); }
+  }
+
+  function showTooltip(e, name, id, row, seatNum) {
+     let tt = document.getElementById('seating-tt') || document.createElement('div');
+     tt.id = 'seating-tt'; tt.className = 'seat-tooltip';
+     if(!document.getElementById('seating-tt')) document.body.appendChild(tt);
+     tt.innerHTML = `<div class="tip-name">${name}</div><div class="tip-id">${id ? id : `Row ${row}, Seat ${seatNum}`}</div>`;
+     const rect = e.target.getBoundingClientRect();
+     tt.style.left = (rect.left + rect.width / 2 - tt.offsetWidth / 2) + 'px';
+     tt.style.top = (rect.top - tt.offsetHeight - 8) + 'px';
+  }
+
+  function hideTooltip() {
+     const tt = document.getElementById('seating-tt');
+     if(tt) tt.remove();
+  }
+
+  function generate(overwriteAll) {
+     let msg = overwriteAll ? 'This will OVERWRITE ALL manual seat assignments. Proceed?' : 'This will auto-assign seats, keeping manual assignments locked. Proceed?';
+     UI.confirm(msg, async () => {
+        try {
+           const res = await App.Server.generateSeating(overwriteAll);
+           if(res.success) {
+              UI.toast(`Successfully assigned seats.`, 'success');
+              // Ensure local state is cleared so the frontend table reflects reality
+              await App.refreshData();
+              UI.navigate('seating'); 
+           } else { throw new Error(res.error); }
+        } catch(err) { UI.toast(err.message, 'error'); }
+     });
+  }
+
+  return { render, generate, showTooltip, hideTooltip, openConfigModal, saveConfig };
+})();
+</script>
