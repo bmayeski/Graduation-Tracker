@@ -69,11 +69,47 @@ function isAdmin() {
 // ── Public API (called via google.script.run) ────────────────
 
 function getInitialData() {
-  return {
+  // Stringify the payload to prevent Apps Script from silently returning null 
+  // if it encounters unexpected Dates in the Google Sheet.
+  return JSON.stringify({
     user:       getCurrentUser(),
     students:   StudentService.getAllStudents(),
     categories: CategoryService.getAllCategories(),
     seating:    SeatingService.getSeatingConfig(),
     stats:      StudentService.getStats()
+  });
+}
+
+function hexToRgba(hex, alpha) {
+  // Remove the hash if it exists
+  hex = hex.replace('#', '');
+  // Parse the r, g, b values
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+  
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+// ── Server Dispatcher ────────────────────────────────────────
+
+function serverDispatcher(fnName, args) {
+  // Map string names to the actual modules
+  const services = {
+    'StudentService': StudentService,
+    'SeatingService': SeatingService,
+    'UserService': UserService,
+    'CategoryService': CategoryService
   };
+  
+  const parts = fnName.split('.');
+  if (parts.length !== 2) throw new Error('Invalid function path: ' + fnName);
+  
+  const service = services[parts[0]];
+  if (!service || typeof service[parts[1]] !== 'function') {
+    throw new Error(`Method ${fnName} not found on server.`);
+  }
+  
+  // Execute the target function with the provided arguments
+  return service[parts[1]].apply(service, args || []);
 }
