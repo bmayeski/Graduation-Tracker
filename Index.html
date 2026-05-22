@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Graduation Tracker</title>
+  <?!= include('Styles/Main'); ?>
+  <?!= include('Styles/Components'); ?>
+  <?!= include('Styles/Seating'); ?>
+</head>
+<body>
+
+  <!-- ── App Shell ─────────────────────────────────── -->
+  <div id="app" class="app-shell">
+
+    <!-- Sidebar -->
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-brand">
+        <svg class="brand-icon" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect width="32" height="32" rx="8" fill="url(#brandGrad)"/>
+          <path d="M8 22 L16 10 L24 22" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M11 18 h10" stroke="white" stroke-width="2" stroke-linecap="round"/>
+          <circle cx="16" cy="8" r="2.5" fill="white"/>
+          <defs>
+            <linearGradient id="brandGrad" x1="0" y1="0" x2="32" y2="32">
+              <stop offset="0%" stop-color="#3B6FE8"/>
+              <stop offset="100%" stop-color="#6C47FF"/>
+            </linearGradient>
+          </defs>
+        </svg>
+        <div class="brand-text">
+          <span class="brand-title">Graduation Tracker</span>
+          <span class="brand-sub">Class of 2027</span>
+        </div>
+        <button class="sidebar-toggle" onclick="UI.toggleSidebar()" aria-label="Collapse sidebar">
+          <span class="ti ti-layout-sidebar-left-collapse"></span>
+        </button>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-section-label">Overview</div>
+        <a class="nav-item active" data-view="dashboard" onclick="UI.navigate('dashboard')">
+          <span class="ti ti-dashboard"></span>
+          <span class="nav-label">Dashboard</span>
+        </a>
+        <a class="nav-item" data-view="students" onclick="UI.navigate('students')">
+          <span class="ti ti-users"></span>
+          <span class="nav-label">Students</span>
+          <span class="nav-badge" id="badge-students">0</span>
+        </a>
+
+        <div class="nav-section-label">Categories</div>
+        <a class="nav-item" data-view="walking" onclick="UI.navigate('walking')">
+          <span class="ti ti-star"></span>
+          <span class="nav-label">Walking</span>
+          <span class="nav-badge walking" id="badge-walking">0</span>
+        </a>
+        <a class="nav-item" data-view="honor" onclick="UI.navigate('honor')">
+          <span class="ti ti-star"></span>
+          <span class="nav-label">Honor Grads</span>
+          <span class="nav-badge honor" id="badge-honor">0</span>
+        </a>
+        <a class="nav-item" data-view="cte" onclick="UI.navigate('cte')">
+          <span class="ti ti-tools"></span>
+          <span class="nav-label">CTE</span>
+          <span class="nav-badge cte" id="badge-cte">0</span>
+        </a>
+        <a class="nav-item" data-view="avid" onclick="UI.navigate('avid')">
+          <span class="ti ti-books"></span>
+          <span class="nav-label">AVID</span>
+          <span class="nav-badge avid" id="badge-avid">0</span>
+        </a>
+        <a class="nav-item" data-view="asb" onclick="UI.navigate('asb')">
+          <span class="ti ti-flag"></span>
+          <span class="nav-label">ASB</span>
+          <span class="nav-badge asb" id="badge-asb">0</span>
+        </a>
+        <a class="nav-item" data-view="military" onclick="UI.navigate('military')">
+          <span class="ti ti-shield-chevron"></span>
+          <span class="nav-label">Military</span>
+          <span class="nav-badge military" id="badge-military">0</span>
+        </a>
+        <a class="nav-item" data-view="military" onclick="UI.navigate('military')">
+          <span class="ti ti-shield-chevron"></span>
+          <span class="nav-label">CSF</span>
+          <span class="nav-badge military" id="badge-military">0</span>
+        </a>
+        <a class="nav-item" data-view="military" onclick="UI.navigate('military')">
+          <span class="ti ti-shield-chevron"></span>
+          <span class="nav-label">HPC</span>
+          <span class="nav-badge military" id="badge-military">0</span>
+        </a>
+        <a class="nav-item" data-view="military" onclick="UI.navigate('military')">
+          <span class="ti ti-shield-chevron"></span>
+          <span class="nav-label">VAPA</span>
+          <span class="nav-badge military" id="badge-military">0</span>
+        </a>
+        <a class="nav-item" data-view="military" onclick="UI.navigate('military')">
+          <span class="ti ti-shield-chevron"></span>
+          <span class="nav-label">PA</span>
+          <span class="nav-badge military" id="badge-military">0</span>
+        </a>
+        <a class="nav-item" data-view="military" onclick="UI.navigate('military')">
+          <span class="ti ti-shield-chevron"></span>
+          <span class="nav-label">SSA</span>
+          <span class="nav-badge military" id="badge-military">0</span>
+        </a>
+        <a class="nav-item" data-view="military" onclick="UI.navigate('military')">
+          <span class="ti ti-shield-chevron"></span>
+          <span class="nav-label">Art</span>
+          <span class="nav-badge military" id="badge-military">0</span>
+        </a>
+        <a class="nav-item" data-view="military" onclick="UI.navigate('military')">
+          <span class="ti ti-shield-chevron"></span>
+          <span class="nav-label">FNL</span>
+          <span class="nav-badge military" id="badge-military">0</span>
+        </a>
+        <a class="nav-item" data-view="military" onclick="UI.navigate('military')">
+          <span class="ti ti-shield-chevron"></span>
+          <span class="nav-label">Yearbook</span>
+          <span class="nav-badge military" id="badge-military">0</span>
+        </a>
+        <a class="nav-item" data-view="military" onclick="UI.navigate('military')">
+          <span class="ti ti-shield-chevron"></span>
+          <span class="nav-label">Norsecrew</span>
+          <span class="nav-badge military" id="badge-military">0</span>
+        </a>
+        <a class="nav-item" data-view="military" onclick="UI.navigate('military')">
+          <span class="ti ti-shield-chevron"></span>
+          <span class="nav-label">Sharp-Mem</span>
+          <span class="nav-badge military" id="badge-military">0</span>
+        </a>
+        <a class="nav-item" data-view="military" onclick="UI.navigate('military')">
+          <span class="ti ti-shield-chevron"></span>
+          <span class="nav-label">Key Club</span>
+          <span class="nav-badge military" id="badge-military">0</span>
+        </a>
+        <a class="nav-item" data-view="military" onclick="UI.navigate('military')">
+          <span class="ti ti-shield-chevron"></span>
+          <span class="nav-label">Bi-Literacy</span>
+          <span class="nav-badge military" id="badge-military">0</span>
+        </a>
+        <a class="nav-item" data-view="military" onclick="UI.navigate('military')">
+          <span class="ti ti-shield-chevron"></span>
+          <span class="nav-label">Gold State Seal</span>
+          <span class="nav-badge military" id="badge-military">0</span>
+        </a>
+        <div class="nav-divider"></div>
+        <a class="nav-item" data-view="non-grads" onclick="UI.navigate('non-grads')">
+          <span class="ti ti-walk-off"></span>
+          <span class="nav-label">Non-Grads</span>
+          <span class="nav-badge nongrad" id="badge-nongrad">0</span>
+        </a>
+        <a class="nav-item" data-view="not-walking" onclick="UI.navigate('not-walking')">
+          <span class="ti ti-walk-off"></span>
+          <span class="nav-label">Not Walking</span>
+          <span class="nav-badge notwalking" id="badge-notwalk">0</span>
+        </a>
+        <a class="nav-item" data-view="summer-grad" onclick="UI.navigate('summer-grad')">
+          <span class="ti ti-walk-off"></span>
+          <span class="nav-label">Summer Grad</span>
+          <span class="nav-badge summer" id="badge-summergrad">0</span>
+        </a>
+
+        <div class="nav-section-label admin-only">Administration</div>
+        <a class="nav-item admin-only" data-view="seating" onclick="UI.navigate('seating')">
+          <span class="ti ti-layout-rows"></span>
+          <span class="nav-label">Seating Chart</span>
+        </a>
+        <a class="nav-item admin-only" data-view="users" onclick="UI.navigate('users')">
+          <span class="ti ti-user-cog"></span>
+          <span class="nav-label">User Management</span>
+        </a>
+        <a class="nav-item admin-only" data-view="settings" onclick="UI.navigate('settings')">
+          <span class="ti ti-settings"></span>
+          <span class="nav-label">Settings</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="user-chip">
+          <div class="user-avatar" id="user-avatar">–</div>
+          <div class="user-info">
+            <span class="user-name" id="user-name">Loading…</span>
+            <span class="user-role" id="user-role">–</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main id="main" class="main-content">
+      <div id="view-container">
+        <!-- Views injected by JS -->
+        <div class="loading-screen">
+          <div class="spinner"></div>
+          <p>Loading Graduation Tracker…</p>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ── Modal Overlay ─────────────────────────────── -->
+  <div id="modal-overlay" class="modal-overlay hidden" onclick="UI.closeModal(event)">
+    <div class="modal-box" id="modal-box">
+      <div class="modal-header">
+        <h3 id="modal-title">Modal Title</h3>
+        <button class="modal-close" onclick="UI.closeModal()">
+          <span class="ti ti-x"></span>
+        </button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+    </div>
+  </div>
+
+  <!-- ── Toast Notifications ───────────────────────── -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- ── Scripts ──────────────────────────────────── -->
+  <?!= include('Scripts/App'); ?>
+  <?!= include('Scripts/UI'); ?>
+</body>
+</html>
