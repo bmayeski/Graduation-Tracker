@@ -366,7 +366,7 @@ button { font-family: var(--font-sans); cursor: pointer; border: none; backgroun
 /* ── Stat Cards ───────────────────────────────────────────── */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 14px;
   margin-bottom: 28px;
 }
@@ -391,6 +391,31 @@ button { font-family: var(--font-sans); cursor: pointer; border: none; backgroun
 .stat-value { font-size: 32px; font-weight: 700; letter-spacing: -1px; margin-top: 6px; color: var(--text-primary); }
 .stat-sub   { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
 .stat-icon  { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); font-size: 28px; opacity: 0.12; }
+
+.stats-divider {
+  margin: 30px 0 15px 0;
+  padding-bottom: 5px;
+  border-bottom: 2px solid var(--border);
+}
+.stats-divider h3 {
+  color: var(--text-secondary);
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 0;
+}
+.stats-section {
+  margin-bottom: 20px;
+}
+
+.stat-card.clickable {
+  cursor: pointer;
+  transition: transform var(--dur-fast), box-shadow var(--dur-fast);
+}
+.stat-card.clickable:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 6px 12px rgba(0,0,0,0.1);
+}
 
 /* ── Forms ────────────────────────────────────────────────── */
 .form-group { display: flex; flex-direction: column; gap: 6px; }
