@@ -7,10 +7,11 @@ const SheetSetup = (() => {
 
   const SHEET_HEADERS = {
     [SHEET_STUDENTS]: [
-      'Student ID','Last Name','First Name',
-      'Honor Grad','CTE','AVID','ASB','Military','Special Recognition',
-      'Not Walking','Not Walking Reason',
-      'Seat Row','Seat Number','Notes','Added By','Timestamp'
+      'Student ID', 'Last Name', 'First Name', 'Non-Grad', 'Not Walking',
+      'Honor Grad', 'CTE', 'AVID', 'ASB', 'Military', 'CSF', 'HPC', 'VAPA', 
+      'PA', 'SSA', 'Art', 'FNL', 'Yearbook', 'Norsecrew', 'Sharp-Mem', 
+      'Key Club', 'Bi-Literacy', 'Gold State Seal', 'HOSA', 'Academic League', 
+      'Not Walking Reason', 'Seat Row', 'Seat Number', 'Notes', 'Added By', 'Timestamp'
     ],
     [SHEET_CATEGORIES]: ['ID','Label','Color','Icon','Sort Priority'],
     [SHEET_SEATING]:    ['Config JSON'],
