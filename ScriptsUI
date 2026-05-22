@@ -1,0 +1,422 @@
+<script>
+/* ============================================================
+   UI.JS  —  Navigation, view router, modal, toast, sidebar
+   ============================================================ */
+
+'use strict';
+
+const UI = (() => {
+
+  // ── Bootstrap (called after data loads) ──────────────────
+  function bootstrap() {
+    const user = App.getUser();
+    _renderUserChip(user);
+    _applyRoleVisibility(user);
+    _updateAllBadges();
+    navigate(App.getState().currentView || 'dashboard');
+  }
+
+  // ── Sidebar ───────────────────────────────────────────────
+  function toggleSidebar() {
+    document.getElementById('app').classList.toggle('collapsed');
+  }
+
+  // ── Navigation / View Router ──────────────────────────────
+  function navigate(viewId) {
+    App.setState({ currentView: viewId });
+
+    // Update active nav item
+    document.querySelectorAll('.nav-item').forEach(el => {
+      el.classList.toggle('active', el.dataset.view === viewId);
+    });
+
+    const container = document.getElementById('view-container');
+    container.innerHTML = ''; // clear
+
+    switch (viewId) {
+      case 'dashboard':   container.appendChild(Views.dashboard()); break;
+      case 'students':    container.appendChild(Views.studentList()); break;
+      case 'honor':       container.appendChild(Views.categoryView('honor',    'Honor Grad',         'ti-star',           '--cat-honor'));    break;
+      case 'cte':         container.appendChild(Views.categoryView('cte',      'CTE',                'ti-tools',          '--cat-cte'));       break;
+      case 'avid':        container.appendChild(Views.categoryView('avid',     'AVID',               'ti-books',          '--cat-avid'));      break;
+      case 'asb':         container.appendChild(Views.categoryView('asb',      'ASB',                'ti-flag',           '--cat-asb'));       break;
+      case 'military':    container.appendChild(Views.categoryView('military', 'Military',           'ti-shield-chevron', '--cat-military')); break;
+      case 'special':     container.appendChild(Views.categoryView('special',  'Special Recognition','ti-award',          '--cat-special'));   break;
+      case 'not-walking': container.appendChild(Views.notWalkingView()); break;
+      case 'seating':     container.appendChild(Views.seatingView()); break;
+      case 'users':       container.appendChild(Views.usersView()); break;
+      case 'settings':    container.appendChild(Views.settingsView()); break;
+      default:            container.appendChild(Views.dashboard());
+    }
+  }
+
+  // ── Badge Updates ─────────────────────────────────────────
+  function _updateAllBadges() {
+    const stats = App.getStats();
+    _setBadge('badge-students', stats.total);
+    _setBadge('badge-honor',    stats.honor);
+    _setBadge('badge-cte',      stats.cte);
+    _setBadge('badge-avid',     stats.avid);
+    _setBadge('badge-asb',      stats.asb);
+    _setBadge('badge-military', stats.military);
+    _setBadge('badge-notwalk',  stats.notWalking);
+  }
+  function updateBadges() { _updateAllBadges(); }
+
+  function _setBadge(id, count) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = count;
+  }
+
+  // ── User Chip ─────────────────────────────────────────────
+  function _renderUserChip(user) {
+    if (!user) return;
+    const parts  = (user.email || '').split('@')[0].split('.');
+    const initials = parts.map(p => p[0] || '').join('').toUpperCase().slice(0,2) || '??';
+    document.getElementById('user-avatar').textContent = initials;
+    document.getElementById('user-name').textContent   = user.email || 'Unknown';
+    document.getElementById('user-role').textContent   = user.role  || 'viewer';
+  }
+
+  // ── Role Visibility ───────────────────────────────────────
+  function _applyRoleVisibility(user) {
+    if (!user || user.role !== 'admin') {
+      document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
+    }
+  }
+
+  // ── Modal ─────────────────────────────────────────────────
+  function openModal(title, bodyHtml, opts = {}) {
+    document.getElementById('modal-title').textContent = title;
+    document.getElementById('modal-body').innerHTML    = bodyHtml;
+    const box = document.getElementById('modal-box');
+    box.className = 'modal-box' + (opts.size ? ` modal-${opts.size}` : '');
+    document.getElementById('modal-overlay').classList.remove('hidden');
+    // Run any init fn passed in options
+    if (opts.onOpen) opts.onOpen();
+  }
+
+  function closeModal(e) {
+    if (e && e.target !== document.getElementById('modal-overlay')) return;
+    document.getElementById('modal-overlay').classList.add('hidden');
+    document.getElementById('modal-body').innerHTML = '';
+  }
+
+  function closeModalDirect() {
+    document.getElementById('modal-overlay').classList.add('hidden');
+    document.getElementById('modal-body').innerHTML = '';
+  }
+
+  // ── Toast ─────────────────────────────────────────────────
+  const TOAST_ICONS = { success: 'ti-circle-check', error: 'ti-alert-circle', info: 'ti-info-circle', warning: 'ti-alert-triangle' };
+
+  function toast(message, type = 'info', duration = 3500) {
+    const container = document.getElementById('toast-container');
+    const div = document.createElement('div');
+    div.className = `toast toast-${type}`;
+    div.innerHTML = `<span class="ti ${TOAST_ICONS[type]} toast-icon"></span><span class="toast-msg">${message}</span>`;
+    container.appendChild(div);
+    setTimeout(() => {
+      div.classList.add('dismissing');
+      setTimeout(() => div.remove(), 300);
+    }, duration);
+  }
+
+  // ── Confirm Dialog ────────────────────────────────────────
+  function confirm(message, onConfirm) {
+    const body = `
+      <div class="confirm-body">
+        <div class="confirm-icon ti ti-alert-triangle"></div>
+        <p>${message}</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="UI.closeModalDirect()">Cancel</button>
+        <button class="btn btn-danger" id="confirm-ok-btn">Delete</button>
+      </div>`;
+    openModal('Confirm Action', body);
+    setTimeout(() => {
+      const btn = document.getElementById('confirm-ok-btn');
+      if (btn) btn.onclick = () => { closeModalDirect(); onConfirm(); };
+    }, 50);
+  }
+
+  // ── Helpers: HTML builders ────────────────────────────────
+  function categoryBadges(student) {
+    const cats = [];
+    if (student.honor)    cats.push(`<span class="badge badge-honor">    <span class="ti ti-star"></span> Honor</span>`);
+    if (student.cte)      cats.push(`<span class="badge badge-cte">      <span class="ti ti-tools"></span> CTE</span>`);
+    if (student.avid)     cats.push(`<span class="badge badge-avid">     <span class="ti ti-books"></span> AVID</span>`);
+    if (student.asb)      cats.push(`<span class="badge badge-asb">      <span class="ti ti-flag"></span> ASB</span>`);
+    if (student.military) cats.push(`<span class="badge badge-military"> <span class="ti ti-shield-chevron"></span> Military</span>`);
+    if (student.special)  cats.push(`<span class="badge badge-special">  <span class="ti ti-award"></span> Special</span>`);
+    if (student.notWalking) cats.push(`<span class="badge badge-notwalk"><span class="ti ti-walk-off"></span> Not Walking</span>`);
+    return cats.join(' ');
+  }
+
+  function el(tag, attrs = {}, ...children) {
+    const e = document.createElement(tag);
+    Object.entries(attrs).forEach(([k, v]) => {
+      if (k === 'className') e.className = v;
+      else if (k === 'innerHTML') e.innerHTML = v;
+      else if (k.startsWith('on')) e.addEventListener(k.slice(2).toLowerCase(), v);
+      else e.setAttribute(k, v);
+    });
+    children.forEach(c => { if (c) e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); });
+    return e;
+  }
+
+  return {
+    bootstrap, toggleSidebar, navigate, updateBadges,
+    openModal, closeModal, closeModalDirect, toast, confirm,
+    categoryBadges, el
+  };
+})();
+
+/* ============================================================
+   VIEWS  —  Page renderers (returns DOM nodes)
+   ============================================================ */
+
+const Views = (() => {
+
+  // ── Dashboard ─────────────────────────────────────────────
+  function dashboard() {
+    const stats = App.getStats();
+    const wrap  = document.createElement('div');
+    wrap.innerHTML = `
+      <div class="page-header">
+        <div class="page-title-block">
+          <h1>Dashboard</h1>
+          <p>Graduation class overview and quick stats</p>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn-primary" onclick="Students.openAddModal()">
+            <span class="ti ti-plus"></span> Add Student
+          </button>
+        </div>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card" style="--accent: var(--brand-grad)">
+          <div class="stat-label">Total Students</div>
+          <div class="stat-value">${stats.total}</div>
+          <div class="stat-sub">registered</div>
+          <span class="stat-icon ti ti-users"></span>
+        </div>
+        <div class="stat-card" style="--accent: var(--accent-green)">
+          <div class="stat-label">Walking</div>
+          <div class="stat-value">${stats.walking}</div>
+          <div class="stat-sub">participating</div>
+          <span class="stat-icon ti ti-walk"></span>
+        </div>
+        <div class="stat-card" style="--accent: var(--accent-red)">
+          <div class="stat-label">Not Walking</div>
+          <div class="stat-value">${stats.notWalking}</div>
+          <div class="stat-sub">not participating</div>
+          <span class="stat-icon ti ti-walk-off"></span>
+        </div>
+        <div class="stat-card" style="--accent: var(--cat-honor)">
+          <div class="stat-label">Honor Grad</div>
+          <div class="stat-value">${stats.honor}</div>
+          <span class="stat-icon ti ti-star"></span>
+        </div>
+        <div class="stat-card" style="--accent: var(--cat-cte)">
+          <div class="stat-label">CTE</div>
+          <div class="stat-value">${stats.cte}</div>
+          <span class="stat-icon ti ti-tools"></span>
+        </div>
+        <div class="stat-card" style="--accent: var(--cat-avid)">
+          <div class="stat-label">AVID</div>
+          <div class="stat-value">${stats.avid}</div>
+          <span class="stat-icon ti ti-books"></span>
+        </div>
+        <div class="stat-card" style="--accent: var(--cat-asb)">
+          <div class="stat-label">ASB</div>
+          <div class="stat-value">${stats.asb}</div>
+          <span class="stat-icon ti ti-flag"></span>
+        </div>
+        <div class="stat-card" style="--accent: var(--cat-military)">
+          <div class="stat-label">Military</div>
+          <div class="stat-value">${stats.military}</div>
+          <span class="stat-icon ti ti-shield-chevron"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Recent Students</span>
+          <button class="btn btn-ghost btn-sm" onclick="UI.navigate('students')">
+            View All <span class="ti ti-arrow-right"></span>
+          </button>
+        </div>
+        ${_recentStudentsTable()}
+      </div>`;
+    return wrap;
+  }
+
+  function _recentStudentsTable() {
+    const students = App.getStudents().slice(-10).reverse();
+    if (!students.length) {
+      return `<div class="empty-state" style="padding:30px">
+        <span class="empty-icon ti ti-users"></span>
+        <h3>No students yet</h3>
+        <p>Add your first student to get started.</p>
+      </div>`;
+    }
+    const rows = students.map(s => `
+      <tr>
+        <td class="mono">${s.studentId}</td>
+        <td>${s.lastName}, ${s.firstName}</td>
+        <td>${UI.categoryBadges(s)}</td>
+        <td>${s.seatRow ? `Row ${s.seatRow} · Seat ${s.seatNumber}` : '<span class="text-muted">Unassigned</span>'}</td>
+      </tr>`).join('');
+    return `<div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>ID</th><th>Name</th><th>Categories</th><th>Seat</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  }
+
+  // ── Student List ──────────────────────────────────────────
+  function studentList() {
+    const wrap = document.createElement('div');
+    wrap.id = 'student-list-view';
+    Students.renderStudentList(wrap);
+    return wrap;
+  }
+
+  // ── Category View ─────────────────────────────────────────
+  function categoryView(catId, label, icon, colorVar) {
+    const students = App.getStudents().filter(s => s[catId]);
+    const wrap = document.createElement('div');
+    wrap.innerHTML = `
+      <div class="page-header">
+        <div class="page-title-block">
+          <h1 style="display:flex;align-items:center;gap:10px">
+            <span class="ti ${icon}" style="color:var(${colorVar})"></span> ${label}
+          </h1>
+          <p>${students.length} student${students.length !== 1 ? 's' : ''} in this category</p>
+        </div>
+        <div class="page-actions">
+          ${App.canEdit(catId) ? `<button class="btn btn-primary" onclick="Students.openAddModal('${catId}')">
+            <span class="ti ti-plus"></span> Add Student
+          </button>` : ''}
+        </div>
+      </div>
+      ${_categoryTable(students, catId, colorVar)}`;
+    return wrap;
+  }
+
+  function _categoryTable(students, catId, colorVar) {
+    if (!students.length) return `
+      <div class="empty-state">
+        <span class="empty-icon ti ti-user-off"></span>
+        <h3>No students in this category</h3>
+        <p>Add students to populate this list.</p>
+      </div>`;
+
+    const rows = students.map(s => `
+      <tr>
+        <td class="mono">${s.studentId}</td>
+        <td>${s.lastName}, ${s.firstName}</td>
+        <td>${UI.categoryBadges(s)}</td>
+        <td>${s.notWalking ? '<span class="badge badge-notwalk">Not Walking</span>' : '<span style="color:var(--accent-green);font-size:12px">✓ Walking</span>'}</td>
+        <td>
+          <div class="row-actions">
+            <button class="btn btn-ghost btn-sm btn-icon" title="Edit" onclick="Students.openEditModal('${s.studentId}')">
+              <span class="ti ti-edit"></span>
+            </button>
+          </div>
+        </td>
+      </tr>`).join('');
+
+    return `<div class="card" style="border-top: 3px solid var(${colorVar})">
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Student ID</th><th>Name</th><th>All Categories</th><th>Status</th><th></th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+  }
+
+  // ── Not Walking ───────────────────────────────────────────
+  function notWalkingView() {
+    const students = App.getStudents().filter(s => s.notWalking);
+    const wrap = document.createElement('div');
+    wrap.innerHTML = `
+      <div class="page-header">
+        <div class="page-title-block">
+          <h1><span class="ti ti-walk-off" style="color:var(--accent-red)"></span> Not Walking</h1>
+          <p>${students.length} student${students.length !== 1 ? 's' : ''} not participating in the ceremony</p>
+        </div>
+        ${App.isAdmin() ? `<div class="page-actions">
+          <button class="btn btn-primary" onclick="Students.openAddModal('notWalking')">
+            <span class="ti ti-plus"></span> Add Student
+          </button>
+        </div>` : ''}
+      </div>
+      ${students.length ? `
+        <div class="card" style="border-top: 3px solid var(--accent-red)">
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th>Student ID</th><th>Name</th><th>Reason</th><th>Categories</th><th></th></tr></thead>
+              <tbody>${students.map(s => `
+                <tr>
+                  <td class="mono">${s.studentId}</td>
+                  <td>${s.lastName}, ${s.firstName}</td>
+                  <td class="muted">${s.nwReason || '—'}</td>
+                  <td>${UI.categoryBadges(s)}</td>
+                  <td>
+                    <button class="btn btn-ghost btn-sm btn-icon" onclick="Students.openEditModal('${s.studentId}')">
+                      <span class="ti ti-edit"></span>
+                    </button>
+                  </td>
+                </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>` : `
+        <div class="empty-state">
+          <span class="empty-icon ti ti-circle-check" style="color:var(--accent-green)"></span>
+          <h3>All students are walking!</h3>
+          <p>No students are currently flagged as not participating.</p>
+        </div>`}`;
+    return wrap;
+  }
+
+  // ── Seating / Users / Settings — delegated to other modules
+  function seatingView()  { const w = document.createElement('div'); Seating.render(w);  return w; }
+  function usersView()    { const w = document.createElement('div'); UsersAdmin.render(w); return w; }
+  function settingsView() {
+    const wrap = document.createElement('div');
+    wrap.innerHTML = `
+      <div class="page-header">
+        <div class="page-title-block"><h1>Settings</h1><p>App configuration and preferences</p></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">General</span></div>
+        <div class="info-banner info">
+          <span class="ti ti-info-circle"></span>
+          Settings are stored per-spreadsheet. Edit the constants in <code>Code.gs</code> to change the spreadsheet ID or sheet names.
+        </div>
+        <div class="form-group" style="margin-top:12px">
+          <label class="form-label">Ceremony Year</label>
+          <input class="form-input" style="max-width:160px" placeholder="e.g. 2025" value="2025" />
+        </div>
+        <div class="form-group" style="margin-top:14px">
+          <label class="form-label">School Name</label>
+          <input class="form-input" style="max-width:320px" placeholder="Your School Name" />
+        </div>
+        <div class="modal-footer" style="border-top:none; padding-top:16px; margin-top:4px">
+          <button class="btn btn-primary" onclick="UI.toast('Settings saved!','success')">
+            <span class="ti ti-device-floppy"></span> Save Settings
+          </button>
+        </div>
+      </div>`;
+    return wrap;
+  }
+
+  return { dashboard, studentList, categoryView, notWalkingView, seatingView, usersView, settingsView };
+})();
+</script>
