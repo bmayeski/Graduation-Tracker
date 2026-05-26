@@ -1,473 +1,330 @@
 <script>
-/* ============================================================
-   UI.JS  —  Navigation, view router, modal, toast, sidebar
-   ============================================================ */
-
-'use strict';
 const UI = (() => {
-
-  // ── Bootstrap (called after data loads) ──────────────────
   function bootstrap() {
     const user = App.getUser();
-    _renderUserChip(user);
-    _applyRoleVisibility(user);
-    _updateAllBadges();
-    navigate(App.getState().currentView || 'dashboard');
-  }
-
-  // ── Sidebar ───────────────────────────────────────────────
-  function toggleSidebar() {
-    document.getElementById('app').classList.toggle('collapsed');
-  }
-
-  // ── Navigation / View Router ──────────────────────────────
-  function navigate(viewId) {
-    App.setState({ currentView: viewId });
-
-    document.querySelectorAll('.nav-item').forEach(el => {
-      el.classList.toggle('active', el.dataset.view === viewId);
-    });
-
-    const container = document.getElementById('view-container');
-    container.innerHTML = ''; // clear
-
-    switch (viewId) {
-      case 'dashboard':   container.appendChild(Views.dashboard()); break;
-      case 'students':    container.appendChild(Views.studentList()); break;
-      case 'categories':  container.appendChild(Views.categoriesView()); break;
-      case 'not-walking': container.appendChild(Views.notWalkingView()); break;
-      case 'seating':     container.appendChild(Views.seatingView()); break;
-      case 'users':       container.appendChild(Views.usersView()); break;
-      case 'settings':    container.appendChild(Views.settingsView()); break;
-      default:            container.appendChild(Views.dashboard());
-    }
-  }
-
-  // ── Badge Updates ─────────────────────────────────────────
-  function _updateAllBadges() {
-    const stats = App.getStats();
-    _setBadge('badge-students', stats.total);
-    _setBadge('badge-notwalk',  stats.notWalking);
-    _setBadge('badge-nongrad',  stats.nonGrad);
-  }
-  function updateBadges() { _updateAllBadges(); }
-
-  function _setBadge(id, count) {
-    const el = document.getElementById(id);
-    if (el) el.textContent = count;
-  }
-
-  // ── User Chip ─────────────────────────────────────────────
-  function _renderUserChip(user) {
     if (!user) return;
-    const parts  = (user.email || '').split('@')[0].split('.');
-    const initials = parts.map(p => p[0] || '').join('').toUpperCase().slice(0,2) || '??';
     
-    const avatarEl = document.getElementById('user-avatar');
-    const nameEl   = document.getElementById('user-name');
-    const roleEl   = document.getElementById('user-role');
+    const fName = user.firstName || '';
+    const lName = user.lastName || '';
+    const initials = (fName.charAt(0) + lName.charAt(0)).toUpperCase() || user.email.charAt(0).toUpperCase();
     
-    if(avatarEl) avatarEl.textContent = initials;
-    if(nameEl) nameEl.textContent = user.email || 'Unknown';
-    if(roleEl) roleEl.textContent = user.role || 'viewer';
-  }
-
-  // ── Role Visibility ───────────────────────────────────────
-  function _applyRoleVisibility(user) {
-    if (!user || user.role !== 'admin') {
-      document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
-    }
-  }
-
-  // ── Modal ─────────────────────────────────────────────────
-  function openModal(title, bodyHtml, opts = {}) {
-    document.getElementById('modal-title').textContent = title;
-    document.getElementById('modal-body').innerHTML    = bodyHtml;
-    const box = document.getElementById('modal-box');
-    box.className = 'modal-box' + (opts.size ? ` modal-${opts.size}` : '');
-    document.getElementById('modal-overlay').classList.remove('hidden');
-    if (opts.onOpen) opts.onOpen();
-  }
-
-  function closeModal(e) {
-    if (e && e.target !== document.getElementById('modal-overlay')) return;
-    document.getElementById('modal-overlay').classList.add('hidden');
-    document.getElementById('modal-body').innerHTML = '';
-  }
-
-  function closeModalDirect() {
-    document.getElementById('modal-overlay').classList.add('hidden');
-    document.getElementById('modal-body').innerHTML = '';
-  }
-
-  // ── Toast ─────────────────────────────────────────────────
-  const TOAST_ICONS = { success: 'ti-circle-check', error: 'ti-alert-circle', info: 'ti-info-circle', warning: 'ti-alert-triangle' };
-  function toast(message, type = 'info', duration = 3500) {
-    const container = document.getElementById('toast-container');
-    const div = document.createElement('div');
-    div.className = `toast toast-${type}`;
-    div.innerHTML = `<span class="ti ${TOAST_ICONS[type]} toast-icon"></span><span class="toast-msg">${message}</span>`;
-    container.appendChild(div);
-    setTimeout(() => {
-      div.classList.add('dismissing');
-      setTimeout(() => div.remove(), 300);
-    }, duration);
-  }
-
-  // ── Confirm Dialog ────────────────────────────────────────
-  function confirm(message, onConfirm) {
-    const body = `
-      <div class="confirm-body">
-        <div class="confirm-icon ti ti-alert-triangle"></div>
-        <p>${message}</p>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-ghost" onclick="UI.closeModalDirect()">Cancel</button>
-        <button class="btn btn-danger" id="confirm-ok-btn">Confirm</button>
-      </div>`;
-    openModal('Confirm Action', body);
-    setTimeout(() => {
-      const btn = document.getElementById('confirm-ok-btn');
-      if (btn) btn.onclick = () => { closeModalDirect(); onConfirm(); };
-    }, 50);
-  }
-
-  // ── Color Helper ──────────────────────────────────────────
-  function hexToRgba(hex, alpha) {
-    if (!hex) return `rgba(100, 100, 100, ${alpha})`;
-    hex = hex.replace('#', '');
-    const r = parseInt(hex.substring(0, 2), 16);
-    const g = parseInt(hex.substring(2, 4), 16);
-    const b = parseInt(hex.substring(4, 6), 16);
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-  }
-
-  // ── Badges ────────────────────────────────────────────────
-  function categoryBadges(student) {
-    const cats = [];
+    document.getElementById('user-name').innerText = (fName + ' ' + lName).trim() || user.email;
+    document.getElementById('user-avatar').innerText = initials;
     
-    App.getCategories().forEach(c => {
-       if (student[c.id]) {
-          cats.push(`<span class="badge" style="background:${UI.hexToRgba(c.color, 0.15)}; color:${c.color}; border: 1px solid ${UI.hexToRgba(c.color, 0.3)};"><span class="ti ti-${c.icon}"></span> ${c.label}</span>`);
-       }
-    });
-
-    if (student.notWalking || student.nonGrad) {
-       cats.push(`<span class="badge badge-notwalk"><span class="ti ti-walk-off"></span> Not Walking</span>`);
-    }
-    
-    return cats.join(' ');
+    buildSidebar();
+    navigate('dashboard');
   }
 
-  function el(tag, attrs = {}, ...children) {
-    const e = document.createElement(tag);
-    Object.entries(attrs).forEach(([k, v]) => {
-      if (k === 'className') e.className = v;
-      else if (k === 'innerHTML') e.innerHTML = v;
-      else if (k.startsWith('on')) e.addEventListener(k.slice(2).toLowerCase(), v);
-      else e.setAttribute(k, v);
-    });
-    children.forEach(c => { if (c) e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); });
-    return e;
-  }
-
-  return {
-    bootstrap, toggleSidebar, navigate, updateBadges,
-    openModal, closeModal, closeModalDirect, toast, confirm,
-    categoryBadges, el, hexToRgba
-  };
-})();
-
-/* ============================================================
-   VIEWS  —  Page renderers (returns DOM nodes)
-   ============================================================ */
-
-const Views = (() => {
-
-  // ── Dashboard ─────────────────────────────────────────────
-  function dashboard() {
+  function buildSidebar() {
     const stats = App.getStats();
-    const students = App.getStudents();
-    const categories = App.getCategories();
-    
-    // This is the variable you were looking for!
-    const categoryCards = categories.map(c => {
-      const count = students.filter(s => s[c.id]).length;
-      return `
-        <div class="stat-card clickable" style="--accent: ${c.color}" 
-             onclick="UI.navigate('categories'); setTimeout(() => { 
-                const btn = document.querySelector('.tab-btn[data-cat=\\'${c.id}\\']');
-                if (btn) btn.click();
-             }, 100);">
-          <div class="stat-label">${c.label}</div>
-          <div class="stat-value">${count}</div>
-          <span class="stat-icon ti ti-${c.icon}"></span>
-        </div>
-      `;
-    }).join('');
+    const nav = document.getElementById('main-nav'); 
+    if (!nav) return;
 
-    // Administrative: Static items
-    const adminItems = [
-      {label: 'Fees Paid', icon: 'currency-dollar'},
-      {label: 'VAL/SAL', icon: 'trophy'},
-      {label: 'Cap & Gowns', icon: 'shirt'},
-      {label: 'Chromebooks', icon: 'device-laptop'},
-      {label: 'Career Met', icon: 'briefcase'},
-      {label: 'Tech Met', icon: 'cpu'},
-      {label: 'Final Transcript', icon: 'file-text'},
-      {label: 'Diplomas Left', icon: 'certificate'}
-    ];
-    const adminCards = adminItems.map(item => `
-        <div class="stat-card" style="--accent: #999">
-          <div class="stat-label">${item.label}</div>
-          <div class="stat-value">—</div>
-          <span class="stat-icon ti ti-${item.icon}"></span>
-        </div>`).join('');
-
-    const wrap  = document.createElement('div');
-    wrap.innerHTML = `
-      <div class="page-header"><h1>Dashboard</h1></div>
-
-      <div class="stats-section">
-        <div class="stats-grid">
-          <div class="stat-card" style="--accent: var(--brand-grad)"><div class="stat-label">Total</div><div class="stat-value">${stats.total}</div><span class="stat-icon ti ti-users"></span></div>
-          <div class="stat-card" style="--accent: var(--accent-green)"><div class="stat-label">Walking</div><div class="stat-value">${stats.walking}</div><span class="stat-icon ti ti-walk"></span></div>
-          <div class="stat-card" style="--accent: var(--accent-red)"><div class="stat-label">Not Walking</div><div class="stat-value">${stats.notWalking}</div><span class="stat-icon ti ti-walk-off"></span></div>
-          <div class="stat-card" style="--accent: var(--accent-red)"><div class="stat-label">Non-Grad</div><div class="stat-value">${stats.nonGrad || 0}</div><span class="stat-icon ti ti-school-off"></span></div>
-        </div>
-      </div>
-
-      <div class="stats-divider"><h3>Cord Groups</h3></div>
-      <div class="stats-section">
-        <div class="stats-grid">${categoryCards}</div>
-      </div>
-
-      <div class="stats-divider"><h3>Administrative</h3></div>
-      <div class="stats-section">
-        <div class="stats-grid">${adminCards}</div>
-      </div>
-
-      <div class="card">${_recentStudentsTable()}</div>`;
-    return wrap;
-  }
-
-  function _recentStudentsTable() {
-    const students = App.getStudents().slice(-10).reverse();
-    if (!students.length) {
-      return `<div class="empty-state" style="padding:30px">
-        <span class="empty-icon ti ti-users"></span>
-        <h3>No students yet</h3>
-        <p>Add your first student to get started.</p>
-      </div>`;
-    }
-    const rows = students.map(s => `
-      <tr>
-        <td class="mono">${s.studentId}</td>
-        <td>${s.lastName}, ${s.firstName}</td>
-        <td>${UI.categoryBadges(s)}</td>
-        <td>${s.seatRow ? `Row ${s.seatRow} · Seat ${s.seatNumber}` : '<span class="text-muted">Unassigned</span>'}</td>
-      </tr>`).join('');
-    return `<div class="table-wrap">
-      <table class="data-table">
-        <thead><tr><th>ID</th><th>Name</th><th>Categories</th><th>Seat</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>`;
-  }
-
-  // ── Student List ──────────────────────────────────────────
-  function studentList() {
-    const wrap = document.createElement('div');
-    wrap.id = 'student-list-view';
-    Students.renderStudentList(wrap);
-    return wrap;
-  }
-
-  // ── Unified Categories View with Tabs ─────────────────────
-  function categoriesView() {
-    const categories = App.getCategories(); 
-    const wrap = document.createElement('div');
-    
-    const tabsHtml = categories.map((cat, index) => {
-      const isActive = index === 0 ? 'active' : '';
-      const bgRgba = UI.hexToRgba(cat.color, 0.15); 
-      const borderRgba = UI.hexToRgba(cat.color, 0.3);
-      const activeStyle = isActive ? `background: ${bgRgba}; border-color: ${borderRgba}; color: ${cat.color};` : '';
-
-      return `
-        <button class="tab-btn ${isActive}" 
-                data-cat="${cat.id}" 
-                onclick="Views.switchCategoryTab('${cat.id}', this)"
-                style="${activeStyle}"
-                data-color="${cat.color}">
-          <span class="ti ti-${cat.icon}" style="color: ${cat.color};"></span> 
-          ${cat.label}
-        </button>
-      `;
-    }).join('');
-
-    wrap.innerHTML = `
-      <div class="page-header">
-        <div class="page-title-block">
-          <h1>Student Groups & Honors</h1>
-          <p>Manage program rosters and recognitions</p>
-        </div>
-        <div class="page-actions" id="cat-action-container"></div>
-      </div>
+    let html = `
+      <div class="nav-section-label">Overview</div>
       
-      <div class="tab-bar">
-        ${tabsHtml}
-      </div>
+      <li class="nav-item" data-view="dashboard" onclick="UI.navigate('dashboard')">
+        <span class="ti ti-layout-dashboard"></span> <span class="nav-label">Dashboard</span>
+      </li>
+      
+      <li class="nav-item" data-view="students" onclick="Students.renderStudentList(document.getElementById('view-container'), 'all')">
+        <span class="ti ti-users"></span> <span class="nav-label">All Students</span> 
+        <span class="nav-badge">${stats.total || 0}</span>
+      </li>
 
-      <div id="category-table-container"></div>
+      <li class="nav-item" data-view="walking" onclick="Students.renderStudentList(document.getElementById('view-container'), 'walking')">
+        <span class="ti ti-walking"></span> <span class="nav-label">Walking</span> 
+        <span class="nav-badge">${stats.walking || 0}</span>
+      </li>
+      
+      <li class="nav-item" data-view="not_participating" onclick="Students.renderStudentList(document.getElementById('view-container'), 'not_participating')">
+        <span class="ti ti-user-x"></span> <span class="nav-label">Not Participating</span> 
+        <span class="nav-badge">${stats.notParticipating || 0}</span>
+      </li>
+      
+      <div class="nav-section-label" style="margin-top: 16px;">Cords & Programs</div>
+      <li class="nav-item" data-view="cords" onclick="UI.navigate('cords')">
+        <span class="ti ti-medal"></span> <span class="nav-label">Cords & Programs</span>
+      </li>
+
+      <div class="nav-section-label" style="margin-top: 16px;">Administration</div>
+      <li class="nav-item" data-view="administrative" onclick="UI.navigate('administrative')">
+        <span class="ti ti-briefcase"></span> <span class="nav-label">Administrative</span>
+      </li>
     `;
 
-    setTimeout(() => {
-      if (categories.length > 0) {
-        switchCategoryTab(categories[0].id, wrap.querySelector('.tab-btn.active'));
-      }
-    }, 0);
-
-    return wrap;
+    if(App.isAdmin()) {
+      html += `
+        <div class="nav-section-label" style="margin-top: 16px;">Administration</div>
+        
+        <li class="nav-item" data-view="seating" onclick="UI.navigate('seating')">
+          <span class="ti ti-armchair"></span> <span class="nav-label">Seating Chart</span>
+        </li>
+        
+        <li class="nav-item" data-view="users" onclick="UI.navigate('users')">
+          <span class="ti ti-user-shield"></span> <span class="nav-label">User Management</span>
+        </li>
+        
+        <li class="nav-item" data-view="adminpanel" onclick="UI.navigate('adminpanel')">
+          <span class="ti ti-settings"></span> <span class="nav-label">Settings</span>
+        </li>
+      `;
+    }
+    
+    nav.innerHTML = html;
   }
 
-  // ── Tab Switcher Logic ────────────────────────────────────
-  function switchCategoryTab(catId, btnEl) {
-    document.querySelectorAll('.tab-bar .tab-btn').forEach(btn => {
-      btn.classList.remove('active');
-      btn.style.background = '';
-      btn.style.borderColor = 'transparent';
-      btn.style.color = 'var(--text-secondary)';
-    });
+  function navigate(viewId) {
+    App.setState({ currentView: viewId });
+    const container = document.getElementById('view-container');
     
-    btnEl.classList.add('active');
-    const color = btnEl.dataset.color;
-    btnEl.style.background = UI.hexToRgba(color, 0.15);
-    btnEl.style.borderColor = UI.hexToRgba(color, 0.3);
-    btnEl.style.color = color;
+    if (!container) return;
 
-    const actionContainer = document.getElementById('cat-action-container');
-    if (actionContainer) {
-       actionContainer.innerHTML = App.canEdit(catId) ? 
-          `<button class="btn btn-secondary" onclick="Students.openBulkAddModal('${catId}')">
-             <span class="ti ti-users"></span> Bulk Import IDs
-           </button>
-           <button class="btn btn-primary" onclick="Students.openAddModal('${catId}')">
-             <span class="ti ti-plus"></span> Add Single
-           </button>` : '';
-    }
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+    const activeNav = document.querySelector(`.nav-item[data-view="${viewId}"]`);
+    if(activeNav) activeNav.classList.add('active');
 
-    const students = App.getStudents().filter(s => s[catId]);
-    const container = document.getElementById('category-table-container');
-    
-    if (!students.length) {
-      container.innerHTML = `
-        <div class="empty-state">
-          <span class="empty-icon ti ti-user-off"></span>
-          <h3>No students found</h3>
-          <p>No one is currently flagged for this category.</p>
-        </div>`;
+    container.innerHTML = '';
+
+    if (viewId.startsWith('cat_')) {
+      const catId = viewId.split('_')[1];
+      const category = App.getCategories().find(c => c.id === catId);
+      const group = category ? category.group : null; 
+      categoriesView(container, catId, group);
       return;
     }
 
-    const rows = students.map(s => `
-      <tr>
-        <td class="mono">${s.studentId}</td>
-        <td>${s.lastName}, ${s.firstName}</td>
-        <td>${UI.categoryBadges(s)}</td>
-        <td>${(s.notWalking || s.nonGrad) ? '<span class="badge badge-notwalk">Not Walking</span>' : '<span style="color:var(--accent-green);font-size:12px">✓ Walking</span>'}</td>
-        <td>
-          <div class="row-actions">
-            <button class="btn btn-ghost btn-sm btn-icon" title="Edit" onclick="Students.openEditModal('${s.studentId}')">
-              <span class="ti ti-edit"></span>
-            </button>
-          </div>
-        </td>
-      </tr>`).join('');
+    switch(viewId) {
+      case 'dashboard': renderDashboard(container); break;
+      case 'students': Students.renderStudentList(container); break;
+      case 'adminpanel': renderAdminPanel(container); break;
+      case 'walking': Students.renderStudentList(container, 'walking'); break;
+      case 'not_participating':
+        // Generate mock categories so the tab system natively supports them
+        const mockCats = [
+          { id: 'notwalking', label: 'notwalking', color: '#FF5566', icon: 'user-x' },
+          { id: 'nongrad', label: 'nongrad', color: '#FF5566', icon: 'school-off' }
+        ];
+        categoriesView(container, 'notwalking', null, mockCats);
+        break;
+      case 'cords':
+        categoriesView(container, null, 'Cord'); break;
+      case 'administrative':
+        categoriesView(container, null, 'Admin'); break;
+      default: renderDashboard(container);
+    }
+  }
+
+  function renderDashboard(container) {
+    const stats = App.getStats();
+    const cats = App.getCategories();
+
+    const generateCards = (group) => cats.filter(c => c.group === group).map(c => `
+      <div class="stat-card clickable" onclick="UI.navigate('cat_${c.id}')" style="--accent: ${c.color}">
+        <div class="stat-value">${stats[c.id] || 0}</div>
+        <div class="stat-label"><span class="ti ti-${c.icon}"></span> ${c.label}</div>
+      </div>`).join('');
 
     container.innerHTML = `
-      <div class="card" style="border-top: 3px solid ${color}">
-        <div class="table-wrap">
-          <table class="data-table">
-            <thead><tr><th>Student ID</th><th>Name</th><th>All Categories</th><th>Status</th><th></th></tr></thead>
-            <tbody>${rows}</tbody>
-          </table>
+      <h1>Dashboard</h1>
+      <div class="stat-grid mb-24">
+        <div class="stat-card clickable" onclick="Students.showFiltered('total')">
+          <div class="stat-value">${stats.total}</div>
+          <div class="stat-label">Total</div>
         </div>
-      </div>`;
+        <div class="stat-card clickable" onclick="Students.showFiltered('walking')" style="--accent: var(--accent-green)">
+          <div class="stat-value">${stats.walking}</div>
+          <div class="stat-label">Walking</div>
+        </div>
+        <div class="stat-card clickable" onclick="UI.navigate('not_participating')" style="--accent: var(--accent-red)">
+          <div class="stat-value">${stats.notWalking}</div>
+          <div class="stat-label">Not Walking</div>
+        </div>
+        <div class="stat-card clickable" onclick="UI.navigate('not_participating')" style="--accent: var(--accent-red)">
+          <div class="stat-value">${stats.nonGrad}</div>
+          <div class="stat-label">Non-Grad</div>
+        </div>
+      </div>
+      
+      <h3 class="section-divider">Cords & Programs</h3>
+      <div class="stat-grid mb-24">${generateCards('Cord')}</div>
+      
+      <h3 class="section-divider">Administrative</h3>
+      <div class="stat-grid">${generateCards('Admin')}</div>
+    `;
   }
 
-  // ── Not Walking ───────────────────────────────────────────
-  function notWalkingView() {
-    const students = App.getStudents().filter(s => s.notWalking || s.nonGrad);
-    const wrap = document.createElement('div');
-    wrap.innerHTML = `
+  function renderAdminPanel(container) {
+    const cats = App.getCategories();
+    let rows = cats.map(c => `
+      <tr>
+        <td><strong>${c.label}</strong> <span class="badge" style="font-size:10px">${c.group}</span></td>
+        <td>
+          <input type="checkbox" ${c.showInSidebar ? 'checked' : ''} 
+                 onchange="UI.toggleNav('${c.id}', this.checked)"
+                 style="transform: scale(1.5); cursor:pointer;">
+        </td>
+      </tr>
+    `).join('');
+
+    container.innerHTML = `
+      <div class="page-header"><h1>App Settings</h1></div>
+      <div class="card">
+        <h3>Sidebar Navigation Toggles</h3>
+        <p style="color:var(--text-muted); margin-bottom:16px;">Check the box to force a list to appear permanently in the left-hand navigation menu.</p>
+        <table class="data-table">
+          <thead><tr><th>Category List</th><th>Show in Sidebar</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function categoriesView(container, forceTabId = null, filterGroup = null, customCats = null) {
+    let cats = customCats || App.getCategories();
+    if (filterGroup && !customCats) {
+      cats = cats.filter(c => c.group === filterGroup);
+    }
+    
+    let tabsHtml = cats.map((c) => {
+      const rgb = hexToRgba(c.color);
+      return `<button class="tab-btn" data-cat="${c.id}" 
+                onclick="UI.switchCategoryTab('${c.id}')"
+                style="--cat-bg: ${rgb.bg}; --cat-border: ${rgb.border};">
+                <span class="ti ti-${c.icon}" style="color: ${c.color}"></span> ${c.label}
+              </button>`;
+    }).join('');
+
+    // Dynamically change the title if it's the Not Participating view
+    const pageTitle = customCats ? "Not Participating" : "Manage Lists";
+
+    container.innerHTML = `
       <div class="page-header">
         <div class="page-title-block">
-          <h1><span class="ti ti-walk-off" style="color:var(--accent-red)"></span> Not Walking / Non-Grads</h1>
-          <p>${students.length} student${students.length !== 1 ? 's' : ''} not participating</p>
+          <h1>${pageTitle}</h1>
+        </div>
+        <div class="header-actions" id="cat-actions-container"></div>
+      </div>
+      <div class="tab-bar">${tabsHtml}</div>
+      <div class="card" style="margin-top: 16px;">
+        <div class="table-responsive">
+          <table class="data-table" id="cat-table">
+             <thead><tr><th>Student</th><th>ID</th><th>Status</th><th>Actions</th></tr></thead>
+             <tbody></tbody>
+          </table>
         </div>
       </div>
-      ${students.length ? `
-        <div class="card" style="border-top: 3px solid var(--accent-red)">
-          <div class="table-wrap">
-            <table class="data-table">
-              <thead><tr><th>Student ID</th><th>Name</th><th>Reason</th><th>Categories</th><th></th></tr></thead>
-              <tbody>${students.map(s => `
-                <tr>
-                  <td class="mono">${s.studentId}</td>
-                  <td>${s.lastName}, ${s.firstName}</td>
-                  <td class="muted">${s.nwReason || '—'}</td>
-                  <td>${UI.categoryBadges(s)}</td>
-                  <td>
-                    <button class="btn btn-ghost btn-sm btn-icon" onclick="Students.openEditModal('${s.studentId}')">
-                      <span class="ti ti-edit"></span>
-                    </button>
-                  </td>
-                </tr>`).join('')}
-              </tbody>
-            </table>
-          </div>
-        </div>` : `
-        <div class="empty-state">
-          <span class="empty-icon ti ti-circle-check" style="color:var(--accent-green)"></span>
-          <h3>All students are walking!</h3>
-          <p>No students are currently flagged as not participating.</p>
-        </div>`}`;
-    return wrap;
+    `;
+    
+    const activeTab = forceTabId || (cats.length > 0 ? cats[0].id : null);
+    if(activeTab) switchCategoryTab(activeTab);
   }
 
-  // ── Seating / Users / Settings ────────────────────────────
-  function seatingView()  { const w = document.createElement('div'); Seating.render(w);  return w; }
-  function usersView()    { const w = document.createElement('div'); UsersAdmin.render(w); return w; }
-  function settingsView() {
-    const wrap = document.createElement('div');
-    wrap.innerHTML = `
-      <div class="page-header">
-        <div class="page-title-block"><h1>Settings</h1><p>App configuration and preferences</p></div>
+  function switchCategoryTab(categoryId) {
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    const btn = document.querySelector(`.tab-btn[data-cat="${categoryId}"]`);
+    if(btn) btn.classList.add('active');
+
+    const actionContainer = document.getElementById('cat-actions-container');
+    if (actionContainer) {
+      actionContainer.innerHTML = `
+        <button class="btn btn-secondary" onclick="Students.openBulkAddModal('${categoryId}')">
+          <span class="ti ti-upload"></span> Bulk Import IDs
+        </button>
+        <button class="btn btn-primary" onclick="Students.openAddModal('${categoryId}')">
+          <span class="ti ti-plus"></span> Add Single
+        </button>
+      `;
+    }
+
+    let category = App.getCategories().find(c => c.id === categoryId);
+    let catLabel = categoryId;
+
+    // Safety fallback so the mock "Not Participating" tabs don't crash
+    if (!category) {
+      if (categoryId === 'notwalking') category = { id: 'notwalking', label: 'notwalking' };
+      else if (categoryId === 'nongrad') category = { id: 'nongrad', label: 'nongrad' };
+      else category = { id: categoryId, label: categoryId };
+      catLabel = category.label;
+    }
+
+    const students = App.getStudents().filter(s => s[categoryId] === true || s[catLabel] === true);
+    const tbody = document.querySelector('#cat-table tbody');
+    
+    if (students.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding: 32px; color: var(--text-muted);">No students flagged for this yet.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = students.map(s => `
+      <tr>
+        <td><strong>${s.lastName}, ${s.firstName}</strong></td>
+        <td>${s.studentId}</td>
+        <td>${(s['notwalking'] || s['nongrad']) ? '<span class="badge warning">Not Walking</span>' : '<span class="badge success">Walking</span>'}</td>
+        <td>
+          <button class="btn-icon" onclick="Students.openEditModal('${s.studentId}')"><span class="ti ti-edit"></span></button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  function hexToRgba(hex) {
+    let c;
+    if(/^#([A-Fa-f0-9]{3}){1,2}$/.test(hex)){
+      c= hex.substring(1).split('');
+      if(c.length== 3){ c= [c[0], c[0], c[1], c[1], c[2], c[2]]; }
+      c= '0x'+c.join('');
+      return {
+        bg: 'rgba('+[(c>>16)&255, (c>>8)&255, c&255].join(',')+',0.15)',
+        border: 'rgba('+[(c>>16)&255, (c>>8)&255, c&255].join(',')+',0.3)'
+      };
+    }
+    return { bg: 'rgba(0,0,0,0.1)', border: 'rgba(0,0,0,0.2)' };
+  }
+
+  function toggleNav(id, show) {
+    App.Server.toggleCategoryNav(id, show).then(() => App.refreshData().then(() => buildSidebar()));
+  }
+
+  // Ensure these match exactly what your buttons call
+  function openModal(title, html, options = {}) {
+    document.getElementById('modal-title').innerText = title;
+    document.getElementById('modal-body').innerHTML = html;
+    document.getElementById('modal-overlay').classList.remove('hidden');
+  }
+
+  function closeModal(event) {
+    // If an event is passed, only close if the target IS the overlay
+    if (event && event.target.id !== 'modal-overlay') {
+      return;
+    }
+    document.getElementById('modal-overlay').classList.add('hidden');
+  }
+
+  function toast(msg, type = 'info') {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.innerText = msg;
+    container.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+  }
+
+  function confirm(msg, callback) {
+    const html = `
+      <p style="margin-bottom: 20px;">${msg}</p>
+      <div style="display: flex; justify-content: flex-end; gap: 10px;">
+        <button class="btn btn-secondary" onclick="UI.closeModal()">Cancel</button>
+        <button class="btn btn-danger" onclick="UI.closeModal(); (${callback.toString()})()">Confirm</button>
       </div>
-      <div class="card">
-        <div class="card-header"><span class="card-title">General</span></div>
-        <div class="info-banner info">
-          <span class="ti ti-info-circle"></span>
-          Settings are stored per-spreadsheet. Edit the constants in <code>Code.gs</code> to change the spreadsheet ID or sheet names.
-        </div>
-        <div class="form-group" style="margin-top:12px">
-          <label class="form-label">Ceremony Year</label>
-          <input class="form-input" style="max-width:160px" placeholder="e.g. 2025" value="2025" />
-        </div>
-        <div class="form-group" style="margin-top:14px">
-          <label class="form-label">School Name</label>
-          <input class="form-input" style="max-width:320px" placeholder="Your School Name" />
-        </div>
-        <div class="modal-footer" style="border-top:none; padding-top:16px; margin-top:4px">
-          <button class="btn btn-primary" onclick="UI.toast('Settings saved!','success')">
-            <span class="ti ti-device-floppy"></span> Save Settings
-          </button>
-        </div>
-      </div>`;
-    return wrap;
+    `;
+    openModal('Are you sure?', html);
   }
 
-  return { dashboard, studentList, categoriesView, switchCategoryTab, notWalkingView, seatingView, usersView, settingsView };
+  return { 
+    bootstrap, navigate, buildSidebar, toggleNav, categoriesView, 
+    switchCategoryTab, hexToRgba,
+    openModal, closeModal, toast, confirm // closeModal is now exposed
+  };
 })();
 </script>
