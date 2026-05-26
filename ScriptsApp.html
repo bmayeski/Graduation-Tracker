@@ -5,7 +5,6 @@
 
 'use strict';
 
-// ── Global App State ─────────────────────────────────────────
 const App = (() => {
   let _state = {
     user:       null,
@@ -17,7 +16,7 @@ const App = (() => {
     currentView: 'dashboard'
   };
 
-  // ── Getters ──────────────────────────────────────────────
+  // ── Getters & Mutations ────────────────────────────────────
   function getState()     { return _state; }
   function getUser()      { return _state.user; }
   function getStudents()  { return _state.students; }
@@ -25,57 +24,15 @@ const App = (() => {
   function getSeating()   { return _state.seating; }
   function getCategories(){ return _state.categories; }
   function isAdmin()      { return _state.user && _state.user.role === 'admin'; }
-  function canEdit(cat)   {
-    if (!_state.user) return false;
-    if (_state.user.role === 'admin') return true;
-    if (_state.user.role === 'category_manager') {
-      return _state.user.categories.includes(cat);
-    }
-    return false;
-  }
 
-  // ── State Mutations ───────────────────────────────────────
-  function setState(patch) {
-    Object.assign(_state, patch);
-  }
+  function setState(patch) { Object.assign(_state, patch); }
 
   function upsertStudent(student) {
     const idx = _state.students.findIndex(s => s.studentId === student.studentId);
-    if (idx >= 0) {
-      _state.students[idx] = student;
-    } else {
-      _state.students.push(student);
-    }
+    if (idx >= 0) { _state.students[idx] = student; } else { _state.students.push(student); }
     _recalcStats();
   }
 
-  // Inside your App module (ScriptsApp.html)
-  async function refreshData() {
-    return new Promise((resolve, reject) => {
-      google.script.run
-        .withSuccessHandler(response => {
-          const data = JSON.parse(response); // Must parse here!
-          setState({
-            user:       data.user,
-            students:   data.students,
-            categories: data.categories,
-            seating:    data.seating,
-            stats:      data.stats,
-            loading:    false
-          });
-          resolve();
-        })
-        .withFailureHandler(reject)
-        .getInitialData();
-    });
-  }
-
-// CRITICAL: Ensure you add it to the return block at the bottom of the App module:
-return {
-  // ... existing items
-  refreshData
-};
-  
   function removeStudent(studentId) {
     _state.students = _state.students.filter(s => s.studentId !== studentId);
     _recalcStats();
@@ -83,20 +40,13 @@ return {
 
   function _recalcStats() {
     const s = _state.students;
-    _state.stats = {
-      total:      s.length,
-      walking:    s.filter(x => !x.notWalking).length,
-      notWalking: s.filter(x => x.notWalking).length,
-      honor:      s.filter(x => x.honor).length,
-      cte:        s.filter(x => x.cte).length,
-      avid:       s.filter(x => x.avid).length,
-      asb:        s.filter(x => x.asb).length,
-      military:   s.filter(x => x.military).length,
-      special:    s.filter(x => x.special).length
-    };
+    _state.stats.total = s.length;
+    _state.stats.walking = s.filter(x => x['Not Walking'] !== true && x['Non-Grad'] !== true).length;
+    _state.stats.notWalking = s.filter(x => x['Not Walking'] === true).length;
+    _state.stats.nonGrad = s.filter(x => x['Non-Grad'] === true).length;
   }
 
-  // ── Initialization ────────────────────────────────────────
+  // ── Initialization & Data Loading ──────────────────────────
   function init() {
     google.script.run
       .withSuccessHandler(_onDataLoaded)
@@ -104,91 +54,79 @@ return {
       .getInitialData();
   }
 
-  function _onDataLoaded(response) {
-    console.log("Raw Server Response:", response); // Look at this in F12 Console (Press F12)
-
-    if (!response) {
-      console.error("Fatal: Server returned no response.");
-      return;
-    }
-
-    let data; // Define 'data' outside the try block
-    try {
-      data = JSON.parse(response);
-    } catch (e) {
-      console.error("JSON Parse Error:", e);
-      UI.toast("Data format error. Check console.", "error");
-      return;
-    }
-
-    // Now 'data' is safely defined and accessible here
-    if (!data || typeof data !== 'object') {
-      console.error("Data is not an object:", data);
-      return;
-    }
-
-    setState({
-      user:       data.user,
-      students:   data.students,
-      categories: data.categories,
-      seating:    data.seating,
-      stats:      data.stats,
-      loading:    false
+  async function refreshData() {
+    return new Promise((resolve, reject) => {
+      google.script.run
+        .withSuccessHandler(response => {
+          try {
+            const data = JSON.parse(response);
+            setState({ ...data, loading: false });
+            resolve();
+          } catch(e) {
+            console.error("Parse Error on Refresh:", e);
+            reject(e);
+          }
+        })
+        .withFailureHandler(reject)
+        .getInitialData();
     });
-
-    UI.bootstrap();
   }
 
+  function _onDataLoaded(response) {
+    if (!response) {
+       console.error("Received empty response from server.");
+       return;
+    }
+    try {
+      const data = JSON.parse(response);
+      setState({ ...data, loading: false });
+      UI.bootstrap();
+    } catch (e) {
+      console.error("Parse Error:", e);
+    }
+  }
+
+  // THIS IS THE MISSING FUNCTION
   function _onLoadError(err) {
-    document.getElementById('view-container').innerHTML = `
-      <div class="empty-state">
-        <span class="empty-icon ti ti-alert-triangle"></span>
-        <h3>Failed to load data</h3>
-        <p>${err.message || 'An unexpected error occurred. Please refresh.'}</p>
-        <button class="btn btn-secondary" onclick="location.reload()">
-          <span class="ti ti-refresh"></span> Retry
-        </button>
-      </div>`;
+    console.error("App Init Failed:", err);
+    const container = document.getElementById('view-container');
+    if(container) {
+      container.innerHTML = `
+        <div class="card" style="margin-top: 20px;">
+          <h3 style="color: var(--accent-red);">Failed to load data</h3>
+          <p>${err ? err.toString() : 'Unknown error occurred while contacting the server.'}</p>
+        </div>`;
+    }
   }
 
   // ── Server Bridge ─────────────────────────────────────────
-  // Wraps google.script.run in Promises for cleaner async usage
-
   function runServer(fnName, ...args) {
     return new Promise((resolve, reject) => {
       google.script.run
         .withSuccessHandler(resolve)
         .withFailureHandler(reject)
-        .serverDispatcher(fnName, args); // Sends the string and the array of arguments to Code.gs
+        .serverDispatcher(fnName, args);
     });
   }
 
-  // Convenience wrappers
   const Server = {
-    addStudent:    (p)  => runServer('StudentService.addStudent', p),
-    updateStudent: (id, p) => runServer('StudentService.updateStudent', id, p),
-    deleteStudent: (id) => runServer('StudentService.deleteStudent', id),
-    bulkImport:    (rows) => runServer('StudentService.bulkImport', rows),
+    addStudent:         (p) => runServer('StudentService.addStudent', p),
+    updateStudent:      (id, p) => runServer('StudentService.updateStudent', id, p),
+    deleteStudent:      (id) => runServer('StudentService.deleteStudent', id),
     bulkAssignCategory: (ids, cat) => runServer('StudentService.bulkAssignCategory', ids, cat),
-
-    getSeatingChart: ()  => runServer('SeatingService.getSeatingChart'),
-    saveSeatingConfig: (cfg) => runServer('SeatingService.saveSeatingConfig', cfg),
-    generateSeating: (overwrite) => runServer('SeatingService.generateSeatingAssignments', overwrite),
-
-    getAllUsers:  ()      => runServer('UserService.getAllUsers'),
-    addUser:     (e,r,c,n) => runServer('UserService.addUser', e, r, c, n),
-    removeUser:  (e)     => runServer('UserService.removeUser', e)
+    getSeatingChart:    () => runServer('SeatingService.getSeatingConfig'),
+    generateSeating:    (overwrite) => runServer('SeatingService.generateSeatingAssignments', overwrite),
+    toggleCategoryNav:  (id, show) => runServer('CategoryService.toggleSidebar', id, show),
+    addCategory:        (p) => runServer('CategoryService.addCategory', p),
+    deleteCategory:     (id) => runServer('CategoryService.deleteCategory', id)
   };
 
-  // NOTE: Because Apps Script doesn't allow direct service calls via
-  // google.script.run with dot notation, expose a single dispatcher
-  // in Code.gs that delegates. The Server object above is the contract.
-
+  // ── Return Public API ──────────────────────────────────────
   return {
     getState, getUser, getStudents, getStats, getSeating,
-    getCategories, isAdmin, canEdit,
+    getCategories, isAdmin, 
     setState, upsertStudent, removeStudent,
-    init, Server, refreshData // <--- Added here
+    init, Server, refreshData
   };
 })();
 
