@@ -1,280 +1,251 @@
 <script>
-/* ============================================================
-   STUDENTS.JS  —  Student list, filtering, Add/Edit modals
-   ============================================================ */
+(function() {
+  const Students = (() => {
 
-const Students = (() => {
+    // 1. ADD THIS TO YOUR STUDENTS MODULE
+    function handleSearch() {
+      const query = document.getElementById('student-search').value.toLowerCase();
+      const students = App.getStudents();
+      const categories = App.getCategories();
 
-  function renderStudentList(container) {
-    const students = App.getStudents();
-    
-    let rows = students.map(s => _createRowHtml(s)).join('');
-    
-    container.innerHTML = `
-      <div class="page-header">
-        <div class="page-title-block">
-          <h1>Students</h1>
-          <p>Manage all graduation candidates</p>
+      // Filter students based on Name, ID, or Category Badge Labels
+      const filtered = students.filter(s => {
+        const nameMatch = (s.firstName + ' ' + s.lastName).toLowerCase().includes(query);
+        const idMatch = String(s.studentId).toLowerCase().includes(query);
+        const categoryMatch = categories.some(cat => 
+          (s[cat.id] === true || s[cat.label] === true) && 
+          cat.label.toLowerCase().includes(query)
+        );
+        return nameMatch || idMatch || categoryMatch;
+      });
+
+      // Re-render just the table body
+      const tbody = document.querySelector('#all-students-table tbody');
+      if (tbody) {
+        tbody.innerHTML = _generateTableRows(filtered, categories);
+      }
+    }
+
+    // Helper to keep table generation DRY (Don't Repeat Yourself)
+    function _generateTableRows(students, categories) {
+      return students.map(s => {
+        // Logic to check if student is not participating
+        const isNotParticipating = (s['notwalking'] || s['nongrad']);
+        
+        // Use a class instead of inline style for better CSS control
+        const rowClass = isNotParticipating ? 'class="row-not-participating"' : '';
+
+        const cordBadges = categories
+          .filter(cat => cat.group === 'Cord' && (s[cat.id] === true || s[cat.label] === true))
+          .map(cat => `<span class="badge" style="background-color: ${cat.color || '#3B6FE8'}20; color: ${cat.color || '#3B6FE8'}; border: 1px solid ${cat.color || '#3B6FE8'}50; margin-right: 4px; padding: 2px 8px; border-radius: 4px; font-size: 11px;">${cat.label}</span>`)
+          .join(' ');
+
+        const adminBadges = categories
+          .filter(cat => cat.group === 'Admin' && (s[cat.id] === true || s[cat.label] === true))
+          .map(cat => `<span class="badge" style="background-color: ${cat.color || '#6C47FF'}20; color: ${cat.color || '#6C47FF'}; border: 1px solid ${cat.color || '#6C47FF'}50; margin-right: 4px; padding: 2px 8px; border-radius: 4px; font-size: 11px;">${cat.label}</span>`)
+          .join(' ');
+
+        return `
+          <tr ${rowClass}>
+            <td><strong>${s.lastName || ''}, ${s.firstName || ''}</strong></td>
+            <td>${s.studentId || ''}</td>
+            <td>${isNotParticipating ? '<span class="badge warning">Not Participating</span>' : '<span class="badge success">Walking</span>'}</td>
+            <td>${cordBadges}</td>
+            <td>${adminBadges}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    // 2. UPDATED RENDER FUNCTION
+    function renderStudentList(container, viewType = 'all') {
+      const allStudents = App.getStudents();
+      const categories = App.getCategories();
+
+      // 1. Calculate stats dynamically
+      const notParticipating = allStudents.filter(s => (s['notwalking'] || s['nongrad']));
+      const walking = allStudents.filter(s => !(s['notwalking'] || s['nongrad']));
+      
+      // 2. Filter data based on view
+      let displayStudents = allStudents;
+      let title = "All Students";
+      
+      if (viewType === 'walking') {
+        displayStudents = walking;
+        title = "Walking Students";
+      } else if (viewType === 'not_participating') {
+        displayStudents = notParticipating;
+        title = "Not Participating Students";
+      }
+
+      // 3. Render
+      container.innerHTML = `
+        <div class="page-header">
+          <div class="page-title-block">
+            <h1>${title}</h1>
+            <p>
+              <strong>Walking:</strong> ${walking.length} | 
+              <strong>Not Participating:</strong> ${notParticipating.length}
+            </p>
+          </div>
+          <div class="header-actions">
+            <input type="text" id="student-search" class="form-input" placeholder="Search..." oninput="Students.handleSearch()" style="width: 200px;">
+          </div>
         </div>
-        <div class="page-actions">
-           <div class="search-bar">
-             <span class="ti ti-search"></span>
-             <input type="text" id="student-search" placeholder="Search ID or Name..." onkeyup="Students.filterList()">
-           </div>
-           <button class="btn btn-primary" onclick="Students.openAddModal()">
-             <span class="ti ti-plus"></span> Add Student
-           </button>
-        </div>
-      </div>
-      <div class="card" style="padding:0; overflow:hidden;">
-        <div class="table-wrap" style="border:none; border-radius:0;">
-          <table class="data-table" id="student-table">
+        <div class="card">
+          <table class="data-table" id="all-students-table">
             <thead>
-              <tr><th>ID</th><th>Name</th><th>Categories</th><th>Status</th><th></th></tr>
+              <tr>
+                <th>Student</th>
+                <th>ID</th>
+                <th>Status</th>
+                <th>Cords</th>
+                <th>Administrative</th>
+              </tr>
             </thead>
-            <tbody>${rows || '<tr><td colspan="5" class="text-muted text-center" style="padding:24px;">No students found.</td></tr>'}</tbody>
+            <tbody>${_generateTableRows(displayStudents, categories)}</tbody>
           </table>
         </div>
-      </div>
-    `;
-  }
-  
-  function _createRowHtml(s) {
-    // Check both notWalking and nonGrad flags to determine status
-    const status = (s.notWalking || s.nonGrad) ? '<span class="badge badge-notwalk">Not Walking</span>' : '<span style="color:var(--accent-green);font-size:12px;font-weight:600;"><span class="ti ti-check"></span> Walking</span>';
-    
-    return `
-      <tr data-sid="${s.studentId}">
-        <td class="mono">${s.studentId}</td>
-        <td style="font-weight:500">${s.lastName}, ${s.firstName}</td>
-        <td>${UI.categoryBadges(s)}</td>
-        <td>${status}</td>
-        <td style="text-align:right">
-          <button class="btn btn-ghost btn-sm btn-icon" onclick="Students.openEditModal('${s.studentId}')">
-            <span class="ti ti-edit"></span>
-          </button>
-        </td>
-      </tr>
-    `;
-  }
-  
-  function filterList() {
-    const q = document.getElementById('student-search').value.toLowerCase();
-    const rows = document.querySelectorAll('#student-table tbody tr');
-    rows.forEach(tr => {
-      if(!tr.dataset.sid) return;
-      const text = tr.innerText.toLowerCase();
-      tr.style.display = text.includes(q) ? '' : 'none';
-    });
-  }
-
-  function _getFormHtml(student = {}, preselectedCat = null) {
-     const cats = App.getCategories();
-     let catHtml = cats.map(c => {
-       const disabled = !App.canEdit(c.id) ? 'disabled' : '';
-       const checked = student[c.id] || (preselectedCat === c.id) ? 'checked' : '';
-       return `
-         <label class="toggle-chip ${checked}" style="--chip-color: ${c.color}">
-           <input type="checkbox" id="field_${c.id}" ${checked} ${disabled} onchange="this.parentElement.classList.toggle('checked', this.checked)">
-           <span class="ti ti-${c.icon}"></span> ${c.label}
-         </label>`;
-     }).join('');
-
-     return `
-      <form id="student-form" onsubmit="event.preventDefault(); Students.saveStudent('${student.studentId || ''}')">
-        <div class="form-grid mb-16">
-          <div class="form-group">
-            <label class="form-label">Student ID</label>
-            <input type="text" id="field_studentId" class="form-input mono" required value="${student.studentId || ''}" ${student.studentId ? 'readonly style="opacity:0.7"' : ''}>
-          </div>
-        </div>
-        <div class="form-grid mb-16">
-          <div class="form-group">
-            <label class="form-label">First Name</label>
-            <input type="text" id="field_firstName" class="form-input" required value="${student.firstName || ''}">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Last Name</label>
-            <input type="text" id="field_lastName" class="form-input" required value="${student.lastName || ''}">
-          </div>
-        </div>
-        
-        <div class="form-group mb-16">
-          <label class="form-label">Categories & Honors</label>
-          <div class="toggle-group">${catHtml}</div>
-        </div>
-
-        <div class="form-group mb-16">
-          <label class="form-label">Graduation Status</label>
-          <div class="toggle-group">
-            <label class="toggle-chip ${student.notWalking ? 'checked' : ''}" style="--chip-color: var(--accent-red);">
-              <input type="checkbox" id="field_notWalking" ${student.notWalking ? 'checked' : ''} onchange="this.parentElement.classList.toggle('checked', this.checked); document.getElementById('nw-reason-wrap').classList.toggle('hidden', (!this.checked && !document.getElementById('field_nonGrad').checked))">
-              <span class="ti ti-walk-off"></span> Not Walking
-            </label>
-            <label class="toggle-chip ${student.nonGrad ? 'checked' : ''}" style="--chip-color: var(--accent-red);">
-              <input type="checkbox" id="field_nonGrad" ${student.nonGrad ? 'checked' : ''} onchange="this.parentElement.classList.toggle('checked', this.checked); document.getElementById('nw-reason-wrap').classList.toggle('hidden', (!this.checked && !document.getElementById('field_notWalking').checked))">
-              <span class="ti ti-school-off"></span> Non-Grad
-            </label>
-          </div>
-        </div>
-        
-        <div class="form-group mb-16 ${student.notWalking || student.nonGrad ? '' : 'hidden'}" id="nw-reason-wrap">
-          <label class="form-label">Reason for not walking/graduating</label>
-          <input type="text" id="field_nwReason" class="form-input" value="${student.nwReason || ''}">
-        </div>
-
-        <div class="form-group mb-16">
-          <label class="form-label" style="display:flex; justify-content:space-between;">
-            <span>Manual Seat Assignment</span>
-            <span class="badge badge-military" style="font-size:10px">Optional</span>
-          </label>
-          <div class="form-grid">
-            <input type="text" id="field_seatRow" class="form-input" placeholder="Row (e.g. L1)" value="${student.seatRow || ''}">
-            <input type="number" id="field_seatNumber" class="form-input" placeholder="Seat (e.g. 35)" value="${student.seatNumber || ''}">
-          </div>
-          <p style="font-size:11px; color:var(--text-muted); margin-top:4px;">If set, auto-assign will skip this student and reserve this seat.</p>
-        </div>
-
-        <div class="form-group mb-24">
-          <label class="form-label">Admin Notes</label>
-          <textarea id="field_notes" class="form-textarea" rows="2">${student.notes || ''}</textarea>
-        </div>
-
-        <div class="modal-footer" style="margin-top:0">
-          ${student.studentId && App.isAdmin() ? `<button type="button" class="btn btn-danger" style="margin-right:auto" onclick="Students.deleteStudent('${student.studentId}')">Delete Student</button>` : ''}
-          <button type="button" class="btn btn-ghost" onclick="UI.closeModalDirect()">Cancel</button>
-          <button type="submit" class="btn btn-primary" id="save-student-btn">Save Student</button>
-        </div>
-      </form>
-     `;
-  }
-
-  function openAddModal(preselectedCat = null) {
-    UI.openModal('Add New Student', _getFormHtml({}, preselectedCat), {size: 'lg'});
-  }
-
-  function openEditModal(studentId) {
-    const student = App.getStudents().find(s => s.studentId == studentId);
-    if(!student) return UI.toast('Student not found', 'error');
-    UI.openModal('Edit Student', _getFormHtml(student), {size: 'lg'});
-  }
-
-  async function saveStudent(existingId) {
-    const btn = document.getElementById('save-student-btn');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner" style="width:16px;height:16px;border-width:2px;margin-right:6px"></span> Saving...';
-
-    // 1. Gather Payload
-    const payload = {
-      studentId: existingId || document.getElementById('field_studentId').value.trim(),
-      firstName: document.getElementById('field_firstName').value.trim(),
-      lastName: document.getElementById('field_lastName').value.trim(),
-      nonGrad: document.getElementById('field_nonGrad').checked,
-      notWalking: document.getElementById('field_notWalking').checked,
-      nwReason: document.getElementById('field_nwReason').value.trim(),
-      notes: document.getElementById('field_notes').value.trim(),
-      seatRow: document.getElementById('field_seatRow') ? document.getElementById('field_seatRow').value.trim() : '',
-      seatNumber: document.getElementById('field_seatNumber') ? document.getElementById('field_seatNumber').value.trim() : ''
-    };
-    
-    App.getCategories().forEach(c => {
-      const el = document.getElementById(`field_${c.id}`);
-      if(el && !el.disabled) payload[c.id] = el.checked;
-    });
-
-    try {
-      // 2. Send to Server Bridge
-      const res = existingId ? 
-        await App.Server.updateStudent(existingId, payload) : 
-        await App.Server.addStudent(payload);
-      
-      if(res.success) {
-        // 3. Mutate local state & refresh UI
-        App.upsertStudent({...payload, studentId: res.studentId || payload.studentId});
-        UI.closeModalDirect();
-        UI.toast('Student saved successfully', 'success');
-        UI.updateBadges();
-        UI.navigate(App.getState().currentView); // re-render active page
-      } else {
-        throw new Error(res.error || 'Failed to save');
-      }
-    } catch(err) {
-      UI.toast(err.message, 'error');
-      btn.disabled = false;
-      btn.innerText = 'Save Student';
+      `;
     }
-  }
 
-  function deleteStudent(studentId) {
-    UI.confirm('Are you sure you want to delete this student? This cannot be undone.', async () => {
-      try {
-        const res = await App.Server.deleteStudent(studentId);
-        if(res.success) {
-          App.removeStudent(studentId);
-          UI.closeModalDirect();
-          UI.toast('Student deleted', 'success');
-          UI.updateBadges();
-          UI.navigate(App.getState().currentView);
-        } else {
-          throw new Error(res.error || 'Failed to delete');
+    // --- MODAL & DATA FUNCTIONS ---
+    function openAddModal(preselectedCat = null) { 
+      UI.openModal('Add New Student', _getFormHtml({}, preselectedCat), {size: 'lg'});
+    } 
+
+    function openEditModal(studentId) { 
+      const student = App.getStudents().find(s => s.studentId == studentId); 
+      if(!student) return UI.toast('Student not found', 'error');
+      UI.openModal('Edit Student', _getFormHtml(student), {size: 'lg'});
+    }
+
+    async function saveStudent(existingId) {
+      const btn = document.getElementById('save-student-btn');
+      if (btn) { btn.disabled = true; btn.innerHTML = ' Saving...'; }
+
+      const payload = { 
+        studentId: existingId || document.getElementById('field_studentId').value.trim(), 
+        firstName: document.getElementById('field_firstName').value.trim(), 
+        lastName: document.getElementById('field_lastName').value.trim(), 
+        nonGrad: document.getElementById('field_nonGrad') ? document.getElementById('field_nonGrad').checked : false, 
+        notWalking: document.getElementById('field_notWalking') ? document.getElementById('field_notWalking').checked : false
+      };
+
+      App.getCategories().forEach(c => { 
+        const el = document.getElementById(`field_${c.id}`); 
+        if(el && !el.disabled) payload[c.id] = el.checked; 
+      });
+
+      try { 
+        const res = existingId ? 
+          await App.Server.updateStudent(existingId, payload) : 
+          await App.Server.addStudent(payload); 
+          
+        if(res.success) { 
+          App.upsertStudent({...payload, studentId: res.studentId || payload.studentId});
+          UI.closeModal();
+          UI.toast('Student saved successfully', 'success'); 
+          UI.navigate(App.getState().currentView); 
+        } else { 
+          throw new Error(res.error || 'Failed to save');
+        } 
+      } catch(err) { 
+        UI.toast(err.message, 'error'); 
+        if (btn) { btn.disabled = false; btn.innerText = 'Save Student'; }
+      } 
+    }
+
+    function deleteStudent(studentId) {
+      UI.confirm('Are you sure you want to delete this student?', async () => {
+        try {
+          const res = await App.Server.deleteStudent(studentId);
+          if(res.success) {
+            App.removeStudent(studentId);
+            UI.closeModal();
+            UI.navigate(App.getState().currentView);
+            UI.toast('Student deleted', 'success');
+          }
+        } catch(err) { UI.toast(err.message, 'error'); }
+      });
+    }
+
+    function showFiltered(type) {
+      console.log("Filtering by:", type);
+      UI.navigate('students');
+    }
+
+    // --- BULK IMPORT LOGIC ---
+    function openBulkAddModal(catId) {
+        const category = App.getCategories().find(c => c.id === catId) || { id: catId, label: catId };
+        
+        // We use a clean string literal for the HTML
+        const html = `
+          <div style="padding: 10px;">
+            <p style="margin-bottom: 15px;">
+              Paste student IDs below for <strong>${category.label}</strong>.
+            </p>
+            <textarea id="bulk-ids-input" style="width: 100%; height: 150px; padding: 10px; border-radius: 4px;"></textarea>
+            
+            <div style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px;">
+              <button class="btn btn-secondary" onclick="UI.closeModal()">Cancel</button>
+              <button id="bulk-submit-btn" class="btn btn-primary" onclick="Students.processBulkAdd('${catId}')">Import IDs</button>
+            </div>
+          </div>
+        `;
+        UI.openModal(`Bulk Import: ${category.label}`, html);
+    }
+
+    async function processBulkAdd(categoryId) {
+        const btn = document.getElementById('bulk-submit-btn');
+        btn.disabled = true;
+        btn.innerHTML = ' Importing...';
+        
+        const input = document.getElementById('bulk-ids-input').value;
+        const ids = input.split(/[,\s\n]+/).filter(id => id.trim() !== '');
+
+        if (ids.length === 0) {
+            UI.toast('Please enter at least one Student ID.', 'error');
+            btn.disabled = false;
+            btn.innerHTML = 'Import IDs';
+            return;
         }
-      } catch(err) {
-         UI.toast(err.message, 'error');
-      }
-    });
-  }
 
-  function openBulkAddModal(categoryId) {
-    const category = App.getCategories().find(c => c.id === categoryId);
-    
-    const html = `
-      <form id="bulk-add-form" onsubmit="event.preventDefault(); Students.processBulkAdd('${categoryId}')">
-        <div class="info-banner info">
-          <span class="ti ti-info-circle"></span>
-          Paste student IDs below. Valid students will instantly receive the <strong>${category.label}</strong> recognition.
-        </div>
-        <div class="form-group mb-16">
-          <label class="form-label">Student IDs (comma, space, or line separated)</label>
-          <textarea id="bulk-ids-input" class="form-textarea mono" rows="8" placeholder="e.g. 12345, 67890, 11122" required></textarea>
-        </div>
-        <div class="modal-footer" style="margin-top:0">
-          <button type="button" class="btn btn-ghost" onclick="UI.closeModalDirect()">Cancel</button>
-          <button type="submit" class="btn btn-primary" id="bulk-submit-btn">Import IDs</button>
-        </div>
-      </form>
-    `;
-    
-    UI.openModal(`Bulk Import: ${category.label}`, html);
-  }
-
-  async function processBulkAdd(categoryId) {
-    const btn = document.getElementById('bulk-submit-btn');
-    btn.disabled = true;
-    btn.innerHTML = 'Importing...';
-
-    const input = document.getElementById('bulk-ids-input').value;
-    const ids = input.split(/[,\s\n]+/).filter(id => id.trim() !== '');
-
-    try {
-      const res = await App.Server.bulkAssignCategory(ids, categoryId);
-      
-      if (res.success) {
-        UI.toast(`Successfully assigned students.`, 'success');
-        
-        // Use a safer reload approach
-        await App.refreshData(); 
-        UI.closeModalDirect();
-        UI.navigate('categories'); 
-      } else {
-        throw new Error(res.error || 'Failed to bulk import');
-      }
-    } catch(err) {
-      UI.toast(err.message, 'error');
-      btn.disabled = false;
-      btn.innerHTML = 'Import IDs';
+        try {
+            const res = await App.Server.bulkAssignCategory(ids, categoryId);
+            if (res.success) {
+                UI.toast(`Successfully assigned ${res.updated} students.`, 'success');
+                UI.closeModal();
+                await App.refreshData();
+                UI.navigate(App.getState().currentView);
+            } else {
+                throw new Error(res.error || 'Failed to bulk import');
+            }
+        } catch(err) {
+            UI.toast(err.message, 'error');
+            btn.disabled = false;
+            btn.innerHTML = 'Import IDs';
+        }
     }
-  }
 
-  return { renderStudentList, openAddModal, openEditModal, saveStudent, deleteStudent, filterList, openBulkAddModal, processBulkAdd };
+    // --- FORM BUILDER (Replace with your actual implementation) ---
+    function _getFormHtml(student = {}, preselectedCat = null) {
+        return `<div>Form builder placeholder - ensure your original code is pasted here!</div>`;
+    }
+
+    return { 
+      renderStudentList, 
+      openAddModal, 
+      openEditModal, 
+      saveStudent, 
+      deleteStudent, 
+      showFiltered, 
+      openBulkAddModal, 
+      processBulkAdd,
+      handleSearch // Add this!
+    };
+  })();
+
+  window.Students = Students;
 })();
 </script>
