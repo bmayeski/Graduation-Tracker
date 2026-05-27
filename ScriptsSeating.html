@@ -5,6 +5,7 @@
 
 const Seating = (() => {
   let currentConfig = null;
+  let currentSeatMap = null;
 
   async function render(container) {
      container.innerHTML = `
@@ -17,6 +18,11 @@ const Seating = (() => {
            <button class="btn btn-ghost" onclick="Seating.openConfigModal()">
              <span class="ti ti-settings"></span> Layout Config
            </button>
+           
+           <button class="btn btn-secondary" id="btn-assign-jh" onclick="Seating.assignJHToRowK()" title="Assigns Junior Honors outside-in for Row K">
+             <span class="ti ti-users"></span> Assign JH to Row K
+           </button>
+           
            <button class="btn btn-secondary" onclick="Seating.generate(false)" title="Keeps manually assigned seats">
              <span class="ti ti-wand"></span> Auto-Assign Missing
            </button>
@@ -31,6 +37,7 @@ const Seating = (() => {
      try {
        const res = await App.Server.getSeatingChart();
        currentConfig = res.config;
+       currentSeatMap = res.seatMap;
        _renderChart(res.config, res.seatMap);
      } catch(err) {
        document.getElementById('seating-canvas').innerHTML = `<div class="empty-state"><span class="ti ti-alert-triangle empty-icon"></span><h3>Error loading</h3><p>${err.message}</p></div>`;
@@ -56,9 +63,9 @@ const Seating = (() => {
         sec.rows.forEach((seatCount, rowIndex) => {
            let r = rowIndex + 1;
            
-           // Check if this is the last row to rename it to JH
-           let isLastRow = (rowIndex === sec.rows.length - 1);
-           let displayRow = isLastRow ? `${sec.id}JH` : `${sec.id}${r}`;
+           // Use alphabet letters for rows (65 is 'A' in ASCII)
+           let letter = String.fromCharCode(65 + rowIndex);
+           let displayRow = `${letter} - ${sec.id}`;
            
            let offset = rowOffsets[rowIndex];
            totalSeats += seatCount;
@@ -67,9 +74,11 @@ const Seating = (() => {
            for(let s = 0; s < seatCount; s++) {
               let physicalSeat;
               if (sec.id === 'L') {
-                 physicalSeat = offset + ((seatCount - 1 - s) * 2) + 1; // Odds
+                 // Odds on the left: Lowest number (1) is on the far OUTSIDE edge (s = 0)
+                 physicalSeat = (s * 2) + 1; 
               } else {
-                 physicalSeat = offset + (seatCount - s) * 2; // Evens
+                 // Evens on the right: Lowest number (2) is on the far OUTSIDE edge (highest s)
+                 physicalSeat = ((seatCount - 1 - s) * 2) + 2; 
               }
 
               const seatId = `${displayRow}-${physicalSeat}`;
@@ -78,33 +87,122 @@ const Seating = (() => {
               let classes = 'seat';
               let tooltip = '';
               
+              let studentId = '';
+              let editValue = '';
+              let innerText = '';
+              
               if(student) {
                  classes += ` occupied`;
                  if(student.honor) classes += ' honor';
                  else if(student.military) classes += ' military';
                  else if(student.asb) classes += ' asb';
-                 tooltip = `onmouseenter="Seating.showTooltip(event, '${student.firstName.replace(/'/g, "\\'")} ${student.lastName.replace(/'/g, "\\'")}', '${student.studentId}', '${displayRow}', '${physicalSeat}')" onmouseleave="Seating.hideTooltip()"`;
+                 studentId = student.studentId;
+                 
+                 let displayName = `${student.firstName} ${student.lastName}`;
+                 const validAcronyms = ['V', 'S', 'JH', 'A', 'W'];
+                 
+                 // 1. If this is a real student who has an acronym in their Notes column
+                 if (student.Notes && validAcronyms.includes(String(student.Notes).trim().toUpperCase())) {
+                     innerText = String(student.Notes).trim().toUpperCase();
+                 }
+
+                 // 2. If this is a placeholder Staff/Acronym seat
+                 if (String(student.studentId).startsWith('STAFF-')) {
+                   displayName = student.lastName; 
+                   
+                   // Check if the name itself is just the acronym (e.g. "JH")
+                   if (validAcronyms.includes(displayName.toUpperCase())) {
+                       innerText = displayName.toUpperCase();
+                   } else if (!innerText) { 
+                       // Only calculate initials if the Notes column didn't already provide an acronym
+                       const nameParts = student.lastName.split(' ').filter(n => n);
+                       if (nameParts.length > 1) {
+                         innerText = (nameParts[0][0] + nameParts[nameParts.length-1][0]).toUpperCase();
+                       } else if (nameParts.length === 1) {
+                         innerText = nameParts[0].substring(0, 2).toUpperCase();
+                       }
+                   }
+                 }
+                 
+                 tooltip = `onmouseenter="Seating.showTooltip(event, '${displayName.replace(/'/g, "\\'")}', '${student.studentId}', '${displayRow}', '${physicalSeat}')" onmouseleave="Seating.hideTooltip()"`;
               } else {
                  classes += ` empty`;
                  tooltip = `onmouseenter="Seating.showTooltip(event, 'Empty Seat', '', '${displayRow}', '${physicalSeat}')" onmouseleave="Seating.hideTooltip()"`;
               }
               
-              seatsHtml += `<div class="${classes}" ${tooltip}></div>`;
+              // Apply clean CSS classes for different roles
+              if (student) {
+                  studentId = student.studentId;
+                  
+                  // 1. Safely read the Notes column directly from the database
+                  const note = student.Notes ? String(student.Notes).trim() : '';
+                  const noteUpper = note.toUpperCase();
+                  
+                  // 2. Determine if this is a real staff member vs an empty placeholder
+                  const isStaff = String(student.studentId).startsWith('STAFF-');
+                  const validAcronyms = ['V', 'S', 'JH', 'A', 'W'];
+                  const lastNameRaw = student.lastName ? student.lastName.trim() : '';
+                  const lastNameUpper = lastNameRaw.toUpperCase();
+                  
+                  // BUILD THE EDIT VALUE FOR THE MODAL
+                  if (isStaff) {
+                      editValue = lastNameRaw;
+                      if (note && lastNameUpper !== noteUpper) editValue += ' ' + note;
+                  } else {
+                      editValue = student.studentId;
+                      if (note) editValue += ' ' + note;
+                  }
+
+                  // A placeholder is a STAFF record whose ENTIRE last name is just an acronym
+                  const isPlaceholder = isStaff && validAcronyms.includes(lastNameUpper);
+                  
+                  // 3. Define strict rules for the special roles based on Notes or Placeholders
+                  const isJH = noteUpper === 'JH' || (isPlaceholder && lastNameUpper === 'JH');
+                  const isAide = noteUpper === 'A' || (isPlaceholder && lastNameUpper === 'A');
+                  const isValSal = noteUpper === 'V' || noteUpper === 'S' || (isPlaceholder && (lastNameUpper === 'V' || lastNameUpper === 'S'));
+
+                  // 4. Apply colors, strictly prioritizing special roles OVER the generic staff color
+                  if (isJH) {
+                      classes += ' jh';
+                  } else if (isAide) {
+                      classes += ' aide';
+                  } else if (isValSal) {
+                      classes += ' val-sal';
+                  } else if (isStaff && !isPlaceholder) {
+                      // Standard staff members (like Jessica Hall) safely fall through to here
+                      classes += ' staff-blue';
+                  } else if (student.honor) {
+                      classes += ' honor-orange';
+                  } else if (!student.military && !student.asb) {
+                      classes += ' regular';
+                  }
+              }
+              
+              // Draw the seat box
+              seatsHtml += `<div class="${classes}" ${tooltip} onclick="Seating.openSeatModal('${displayRow}', '${physicalSeat}', '${studentId}', '${editValue.replace(/'/g, "\\'")}')">
+                              <span style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 8.5px; font-weight: bold; pointer-events: none;">${innerText}</span>
+                            </div>`;
            }
            
            if (sec.id === 'L') {
-             // Left section: Label goes on the RIGHT side of the seats (closest to center aisle)
+             // Left section: Label goes on the RIGHT side of the seats
              rowsHtml += `
                <div class="seat-row">
                   <div class="seats-in-row">${seatsHtml}</div>
-                  <div class="row-label" style="text-align: left; margin-left: 4px;">${displayRow}</div>
+                  <div class="row-label" style="text-align: left; margin-left: 4px; display: flex; align-items: center; gap: 6px; width: auto; color: var(--text-primary); font-weight: 600;">
+                     ${displayRow}
+                     <input type="number" min="0" max="100" value="${seatCount}" onchange="Seating.updateRowSeats('${sec.id}', ${rowIndex}, this.value)" style="width: 44px; padding: 2px 4px; font-size: 12px; background: var(--bg-input); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; text-align: center;" title="Change number of seats in this row">
+                  </div>
                </div>
              `;
            } else {
-             // Right section: Label goes on the LEFT side of the seats (closest to center aisle)
+             // Right section: Label goes on the LEFT side of the seats
              rowsHtml += `
                <div class="seat-row">
-                  <div class="row-label" style="margin-right: 4px;">${displayRow}</div>
+                  <div class="row-label" style="margin-right: 4px; display: flex; align-items: center; gap: 6px; width: auto; color: var(--text-primary); font-weight: 600;">
+                     <input type="number" min="0" max="100" value="${seatCount}" onchange="Seating.updateRowSeats('${sec.id}', ${rowIndex}, this.value)" style="width: 44px; padding: 2px 4px; font-size: 12px; background: var(--bg-input); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; text-align: center;" title="Change number of seats in this row">
+                     ${displayRow}
+                  </div>
                   <div class="seats-in-row">${seatsHtml}</div>
                </div>
              `;
@@ -149,7 +247,7 @@ const Seating = (() => {
            </label>
         </div>
         <div class="modal-footer" style="margin-top:0">
-          <button type="button" class="btn btn-ghost" onclick="UI.closeModalDirect()">Cancel</button>
+          <button type="button" class="btn btn-ghost" onclick="UI.closeModal()">Cancel</button>
           <button type="button" class="btn btn-primary" onclick="Seating.saveConfig()">Save Configuration</button>
         </div>
       </div>`;
@@ -167,10 +265,95 @@ const Seating = (() => {
       const res = await App.Server.saveSeatingConfig(newConfig);
       if(res.success) {
          currentConfig = newConfig;
-         UI.closeModalDirect();
+         UI.closeModal();
          UI.navigate('seating'); 
       }
     } catch(err) { UI.toast(err.message, 'error'); }
+  }
+
+  function updateRowSeats(sectionId, rowIndex, newCount) {
+     const count = parseInt(newCount, 10);
+     if (isNaN(count) || count < 0) return;
+     
+     const sec = currentConfig.sections.find(s => s.id === sectionId);
+     if (sec && sec.rows[rowIndex] !== count) {
+        sec.rows[rowIndex] = count;
+        
+        // Re-render the visual chart instantly so it feels snappy
+        _renderChart(currentConfig, currentSeatMap);
+        
+        // Save silently in the background
+        App.Server.saveSeatingConfig(currentConfig)
+          .then(res => { if(!res.success) throw new Error(res.error); })
+          .catch(err => UI.toast('Failed to save layout: ' + err.message, 'error'));
+     }
+  }
+
+  function openSeatModal(rowLabel, seatNumber, currentId, editValue = '') {
+    const isOccupied = !!currentId;
+    const title = isOccupied ? `Manage Seat ${rowLabel}-${seatNumber}` : `Assign Seat ${rowLabel}-${seatNumber}`;
+    
+    let html = `
+      <div style="padding: 10px 0;">
+        <p class="text-secondary mb-16" style="font-size: 13px;">
+          Enter a Student ID to assign this seat, or type a Staff Name to reserve it for staff.
+        </p>
+        <div class="form-group mb-16">
+          <label class="form-label">Student ID or Staff Name</label>
+          <input type="text" id="seat-assign-input" class="form-input" 
+                 value="${editValue || currentId || ''}" 
+                 placeholder="e.g. 123456 or Mr. Smith" autocomplete="off">
+        </div>
+      </div>
+      <div class="modal-footer" style="margin-top: 0;">
+        ${isOccupied ? `<button type="button" class="btn btn-danger" style="margin-right: auto;" onclick="Seating.clearSeat('${rowLabel}', '${seatNumber}', '${currentId}')">Clear Seat</button>` : ''}
+        <button type="button" class="btn btn-ghost" onclick="UI.closeModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" id="save-seat-btn" onclick="Seating.saveSeatAssignment('${rowLabel}', '${seatNumber}', '${currentId}')">Save Assignment</button>
+      </div>
+    `;
+    UI.openModal(title, html);
+  }
+
+  async function saveSeatAssignment(rowLabel, seatNumber, previousId) {
+    const inputVal = document.getElementById('seat-assign-input').value.trim();
+    if (!inputVal) {
+       if (previousId) return clearSeat(rowLabel, seatNumber, previousId);
+       return UI.closeModal();
+    }
+
+    const btn = document.getElementById('save-seat-btn');
+    btn.disabled = true; btn.innerText = 'Saving...';
+
+    try {
+      const res = await App.Server.assignSeatManually(rowLabel, seatNumber, inputVal, previousId);
+      if (res.success) {
+         UI.closeModal();
+         UI.toast('Seat assigned!', 'success');
+         await App.refreshData(); // Pulls the new data
+         Seating.render(document.getElementById('view-container')); // Redraws the map
+      } else {
+         throw new Error(res.error);
+      }
+    } catch(err) {
+      UI.toast(err.message, 'error');
+      btn.disabled = false; btn.innerText = 'Save Assignment';
+    }
+  }
+
+  async function clearSeat(rowLabel, seatNumber, studentId) {
+    try {
+      const res = await App.Server.assignSeatManually(rowLabel, seatNumber, '', studentId);
+      if (res.success) {
+         UI.closeModal();
+         UI.toast('Seat cleared.', 'success');
+         await App.refreshData();
+         Seating.render(document.getElementById('view-container'));
+      } else {
+         throw new Error(res.error);
+      }
+    } catch(err) {
+      UI.toast(err.message, 'error');
+    }
   }
 
   function showTooltip(e, name, id, row, seatNum) {
@@ -188,7 +371,7 @@ const Seating = (() => {
      if(tt) tt.remove();
   }
 
-  function generate(overwriteAll) {
+  function generate(overwriteAll = false) {
      let msg = overwriteAll ? 'This will OVERWRITE ALL manual seat assignments. Proceed?' : 'This will auto-assign seats, keeping manual assignments locked. Proceed?';
      UI.confirm(msg, async () => {
         try {
@@ -203,6 +386,34 @@ const Seating = (() => {
      });
   }
 
-  return { render, generate, showTooltip, hideTooltip, openConfigModal, saveConfig };
+  async function assignJHToRowK() {
+    const btn = document.getElementById('btn-assign-jh');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="ti ti-loader spin"></span> Assigning...';
+
+    try {
+      const res = await App.Server.assignJHRowK();
+      if (res.success) {
+        UI.toast(`Successfully assigned ${res.count} Junior Honors to Row K!`, 'success');
+        if (res.count < res.totalJH) {
+            UI.toast(`Warning: ${res.totalJH - res.count} JH students didn't fit in Row K. Add more seats to Row K!`, 'warning');
+        }
+        await App.refreshData(); // Pulls the new data from the database
+        render(document.getElementById('view-container')); // Redraws the map
+      } else {
+        throw new Error(res.error);
+      }
+    } catch(err) {
+      UI.toast(err.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<span class="ti ti-users"></span> Assign JH to Row K';
+    }
+  }
+
+  return { 
+    render, generate, showTooltip, hideTooltip, openConfigModal, saveConfig, 
+    openSeatModal, saveSeatAssignment, clearSeat, updateRowSeats, assignJHToRowK // <--- Add these three here
+  };
 })();
 </script>
