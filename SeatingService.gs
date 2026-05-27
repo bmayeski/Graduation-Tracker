@@ -76,26 +76,26 @@ const SeatingService = (() => {
       const maxSeats = Math.max(leftCount, rightCount);
       const rowOffset = currentOffset; 
       
-      // Calculate the specific label for this row (JH if it's the last row)
-      const isLastLeftRow = (r === leftSec.rows.length - 1);
-      const leftDisplayRow = isLastLeftRow ? 'LJH' : `L${r+1}`;
-      
-      const isLastRightRow = (r === rightSec.rows.length - 1);
-      const rightDisplayRow = isLastRightRow ? 'RJH' : `R${r+1}`;
+      // Use alphabet letters for rows (A = 65)
+      const letter = String.fromCharCode(65 + r);
+      const leftDisplayRow = `${letter} - L`;
+      const rightDisplayRow = `${letter} - R`;
 
       for (let s = 0; s < maxSeats; s++) {
-        // Left side (Odds)
+        // Left side (Odds starting from 1)
         if (s < leftCount) {
-          const physicalSeat = rowOffset + ((leftCount - 1 - s) * 2) + 1;
+          // Changed to assign odd numbers sequentially (1, 3, 5...)
+          const physicalSeat = (s * 2) + 1; 
           const seatId = `${leftDisplayRow}-${physicalSeat}`;
           if (!occupiedSeats.has(seatId) && pointer < unassigned.length) {
             assignments.push({ studentId: unassigned[pointer++].studentId, rowLabel: leftDisplayRow, seatNumber: physicalSeat });
             occupiedSeats.add(seatId);
           }
         }
-        // Right side (Evens)
+        // Right side (Evens starting from 2)
         if (s < rightCount) {
-          const physicalSeat = rowOffset + (rightCount - s) * 2;
+          // Changed to assign even numbers sequentially (2, 4, 6...)
+          const physicalSeat = (s * 2) + 2; 
           const seatId = `${rightDisplayRow}-${physicalSeat}`;
           if (!occupiedSeats.has(seatId) && pointer < unassigned.length) {
             assignments.push({ studentId: unassigned[pointer++].studentId, rowLabel: rightDisplayRow, seatNumber: physicalSeat });
@@ -107,7 +107,7 @@ const SeatingService = (() => {
     }
 
     // 4. Bulk update the Students sheet for performance
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Students');
+    const sheet = getSheet('Students');
     const data = sheet.getDataRange().getValues();
     const assignMap = {};
     assignments.forEach(a => assignMap[String(a.studentId)] = a);
@@ -142,5 +142,194 @@ const SeatingService = (() => {
     return { config, seatMap, students };
   }
 
-  return { getSeatingConfig, saveSeatingConfig, generateSeatingAssignments, getSeatingChart };
+  function assignSeatManually(rowLabel, seatNumber, inputValue, previousId) {
+    if (!isAdmin()) return { success: false, error: 'Admin only' };
+    
+    const sheet = getSheet('Students');
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    
+    const idCol = 0; // Student ID
+    const lastCol = 1; // Last Name
+    const firstCol = 2; // First Name
+    const seatRowCol = headers.indexOf('Seat Row');
+    const seatNumCol = headers.indexOf('Seat Number');
+    const notesCol = headers.indexOf('Notes');
+    
+    if (seatRowCol === -1 || seatNumCol === -1) return { success: false, error: 'Seat columns not found' };
+
+    // 1. If there was a previous student/staff in this seat, clear them out first
+    if (previousId) {
+       for (let i = 1; i < data.length; i++) {
+          if (String(data[i][idCol]).trim() === String(previousId).trim()) {
+             sheet.getRange(i + 1, seatRowCol + 1).setValue('');
+             sheet.getRange(i + 1, seatNumCol + 1).setValue('');
+             break;
+          }
+       }
+    }
+
+    // 2. If the input is empty, they just wanted to clear the seat. Return success.
+    if (!inputValue) return { success: true };
+
+    // 3. Check if they typed an acronym, or a name/ID with an acronym at the end
+    let searchVal = inputValue.trim();
+    let acronymToSave = '';
+    const validAcronyms = ['V', 'S', 'JH', 'A', 'W'];
+    
+    // If they JUST typed "A" or "JH" to reserve an empty seat
+    if (validAcronyms.includes(searchVal.toUpperCase())) {
+       let newRow = new Array(headers.length).fill('');
+       newRow[idCol] = 'STAFF-' + Math.floor(Math.random() * 10000); 
+       newRow[lastCol] = searchVal.toUpperCase(); 
+       newRow[firstCol] = 'Staff'; 
+       newRow[seatRowCol] = rowLabel;
+       newRow[seatNumCol] = seatNumber;
+       sheet.appendRow(newRow);
+       return { success: true };
+    }
+    
+    // If they typed multiple words, check if the LAST (or first) word is an acronym (e.g. "Mr Smith A" or "12345 V")
+    const parts = searchVal.split(' ');
+    if (parts.length > 1) {
+       const lastWord = parts[parts.length - 1].toUpperCase();
+       const firstWord = parts[0].toUpperCase();
+       
+       if (validAcronyms.includes(lastWord)) {
+          acronymToSave = lastWord;
+          parts.pop(); // Remove the acronym from the search string
+          searchVal = parts.join(' ').trim();
+       } else if (validAcronyms.includes(firstWord)) {
+          acronymToSave = firstWord;
+          parts.shift(); // Remove the acronym from the search string
+          searchVal = parts.join(' ').trim();
+       }
+    }
+
+    // 4. Search for the ID or Name using the cleaned searchVal
+    const isId = /^\d+$/.test(searchVal);
+    
+    if (isId) {
+       // Search for the Student ID
+       let found = false;
+       for (let i = 1; i < data.length; i++) {
+          if (String(data[i][idCol]).trim() === searchVal) {
+             sheet.getRange(i + 1, seatRowCol + 1).setValue(rowLabel);
+             sheet.getRange(i + 1, seatNumCol + 1).setValue(seatNumber);
+             if (acronymToSave && notesCol !== -1) sheet.getRange(i + 1, notesCol + 1).setValue(acronymToSave);
+             found = true;
+             break;
+          }
+       }
+       if (!found) return { success: false, error: 'Student ID not found in database.' };
+    } else {
+       // It's a Staff Name
+       let found = false;
+       for (let i = 1; i < data.length; i++) {
+          const fullName = (String(data[i][firstCol]) + " " + String(data[i][lastCol])).toLowerCase();
+          if (fullName.includes(searchVal.toLowerCase()) || String(data[i][lastCol]).toLowerCase() === searchVal.toLowerCase()) {
+             sheet.getRange(i + 1, seatRowCol + 1).setValue(rowLabel);
+             sheet.getRange(i + 1, seatNumCol + 1).setValue(seatNumber);
+             if (acronymToSave && notesCol !== -1) sheet.getRange(i + 1, notesCol + 1).setValue(acronymToSave);
+             found = true;
+             break;
+          }
+       }
+       
+       // If no match is found, append them as a new "Staff" row
+       if (!found) {
+         let newRow = new Array(headers.length).fill('');
+         newRow[idCol] = 'STAFF-' + Math.floor(Math.random() * 10000); 
+         newRow[lastCol] = searchVal; // The clean name, e.g. "Mr Smith"
+         newRow[firstCol] = 'Staff';
+         newRow[seatRowCol] = rowLabel;
+         newRow[seatNumCol] = seatNumber;
+         if (acronymToSave && notesCol !== -1) newRow[notesCol] = acronymToSave;
+         sheet.appendRow(newRow);
+       }
+    }
+
+    return { success: true };
+  }
+
+  function assignJuniorHonorsToRowK() {
+    if (!isAdmin()) return { success: false, error: 'Admin only' };
+
+    const sheet = getSheet('Students');
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+
+    const idCol = 0;
+    const lastCol = 1;
+    const firstCol = 2;
+    const notesCol = headers.indexOf('Notes');
+    const seatRowCol = headers.indexOf('Seat Row');
+    const seatNumCol = headers.indexOf('Seat Number');
+
+    if (seatRowCol === -1 || seatNumCol === -1 || notesCol === -1) {
+      return { success: false, error: 'Missing necessary columns.' };
+    }
+
+    // 1. Gather all unassigned JH students
+    const jhStudents = [];
+    for (let i = 1; i < data.length; i++) {
+      const note = String(data[i][notesCol]).trim().toUpperCase();
+      const hasSeat = data[i][seatRowCol] && data[i][seatNumCol];
+      
+      if (note === 'JH' && !hasSeat) {
+        jhStudents.push({
+          rowIdx: i + 1,
+          last: String(data[i][lastCol]),
+          first: String(data[i][firstCol])
+        });
+      }
+    }
+
+    if (jhStudents.length === 0) return { success: false, error: 'No unassigned Junior Honors found.' };
+
+    // 2. Get Row K capacities (Index 10 because A=0, B=1 ... K=10)
+    const config = getSeatingConfig();
+    const leftSec = config.sections.find(s => s.id === 'L');
+    const rightSec = config.sections.find(s => s.id === 'R');
+
+    if (!leftSec || !rightSec || leftSec.rows.length <= 10 || rightSec.rows.length <= 10) {
+      return { success: false, error: 'Row K does not exist! Please add at least 11 rows in Layout Config.' };
+    }
+
+    const leftCount = leftSec.rows[10];
+    const rightCount = rightSec.rows[10];
+    const maxSeats = Math.max(leftCount, rightCount);
+
+    // 3. Assign them alternating outside-in specifically for Row K
+    const updates = [];
+    let pointer = 0;
+
+    for (let s = 0; s < maxSeats; s++) {
+      // Left Side (Odds) - Outside in
+      if (s < leftCount && pointer < jhStudents.length) {
+        const physicalSeat = (s * 2) + 1;
+        updates.push({ rowIdx: jhStudents[pointer].rowIdx, rowLabel: 'K - L', seatNum: physicalSeat });
+        pointer++;
+      }
+      // Right Side (Evens) - Outside in
+      if (s < rightCount && pointer < jhStudents.length) {
+        const physicalSeat = ((rightCount - 1 - s) * 2) + 2;
+        updates.push({ rowIdx: jhStudents[pointer].rowIdx, rowLabel: 'K - R', seatNum: physicalSeat });
+        pointer++;
+      }
+    }
+
+    // 4. Save the assignments directly back to the Students sheet
+    updates.forEach(u => {
+      sheet.getRange(u.rowIdx, seatRowCol + 1).setValue(u.rowLabel);
+      sheet.getRange(u.rowIdx, seatNumCol + 1).setValue(u.seatNum);
+    });
+
+    return { success: true, count: updates.length, totalJH: jhStudents.length };
+  }
+
+  return { 
+    getSeatingConfig, saveSeatingConfig, generateSeatingAssignments, 
+    getSeatingChart, assignSeatManually, assignJuniorHonorsToRowK // <--- Add it here
+  };
 })();
