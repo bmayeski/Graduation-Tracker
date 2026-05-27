@@ -37,7 +37,7 @@ const UI = (() => {
         <span class="nav-badge">${stats.walking || 0}</span>
       </li>
       
-      <li class="nav-item" data-view="not_participating" onclick="Students.renderStudentList(document.getElementById('view-container'), 'not_participating')">
+      <li class="nav-item" data-view="not_participating" onclick="UI.navigate('notwalking')">
         <span class="ti ti-user-x"></span> <span class="nav-label">Not Participating</span> 
         <span class="nav-badge">${stats.notParticipating || 0}</span>
       </li>
@@ -98,14 +98,22 @@ const UI = (() => {
       case 'dashboard': renderDashboard(container); break;
       case 'students': Students.renderStudentList(container); break;
       case 'adminpanel': renderAdminPanel(container); break;
+      case 'seating': Seating.render(container); break;
+      case 'users': UsersAdmin.render(container); break;
       case 'walking': Students.renderStudentList(container, 'walking'); break;
       case 'not_participating':
+      case 'notwalking':
+      case 'nongrad':
         // Generate mock categories so the tab system natively supports them
         const mockCats = [
-          { id: 'notwalking', label: 'notwalking', color: '#FF5566', icon: 'user-x' },
-          { id: 'nongrad', label: 'nongrad', color: '#FF5566', icon: 'school-off' }
+          { id: 'notwalking', label: 'Not Walking', color: '#FF5566', icon: 'user-x' },
+          { id: 'nongrad', label: 'Non-Grad', color: '#FF5566', icon: 'school-off' }
         ];
-        categoriesView(container, 'notwalking', null, mockCats);
+        // Determine which tab to default to based on what was clicked
+        let startTab = 'notwalking';
+        if (viewId === 'nongrad') startTab = 'nongrad';
+        
+        categoriesView(container, startTab, null, mockCats);
         break;
       case 'cords':
         categoriesView(container, null, 'Cord'); break;
@@ -136,11 +144,11 @@ const UI = (() => {
           <div class="stat-value">${stats.walking}</div>
           <div class="stat-label">Walking</div>
         </div>
-        <div class="stat-card clickable" onclick="UI.navigate('not_participating')" style="--accent: var(--accent-red)">
+        <div class="stat-card clickable" onclick="UI.navigate('notwalking')" style="--accent: var(--accent-red)">
           <div class="stat-value">${stats.notWalking}</div>
           <div class="stat-label">Not Walking</div>
         </div>
-        <div class="stat-card clickable" onclick="UI.navigate('not_participating')" style="--accent: var(--accent-red)">
+        <div class="stat-card clickable" onclick="UI.navigate('nongrad')" style="--accent: var(--accent-red)">
           <div class="stat-value">${stats.nonGrad}</div>
           <div class="stat-label">Non-Grad</div>
         </div>
@@ -242,8 +250,8 @@ const UI = (() => {
 
     // Safety fallback so the mock "Not Participating" tabs don't crash
     if (!category) {
-      if (categoryId === 'notwalking') category = { id: 'notwalking', label: 'notwalking' };
-      else if (categoryId === 'nongrad') category = { id: 'nongrad', label: 'nongrad' };
+      if (categoryId === 'notwalking') category = { id: 'notwalking', label: 'Not Walking' };
+      else if (categoryId === 'nongrad') category = { id: 'nongrad', label: 'Non-Grad' };
       else category = { id: categoryId, label: categoryId };
       catLabel = category.label;
     }
@@ -262,7 +270,14 @@ const UI = (() => {
         <td>${s.studentId}</td>
         <td>${(s['notwalking'] || s['nongrad']) ? '<span class="badge warning">Not Walking</span>' : '<span class="badge success">Walking</span>'}</td>
         <td>
-          <button class="btn-icon" onclick="Students.openEditModal('${s.studentId}')"><span class="ti ti-edit"></span></button>
+          <div class="row-actions">
+            <button class="btn btn-secondary btn-sm" onclick="Students.openEditModal('${s.studentId}')">
+              Edit
+            </button>
+            <button class="btn btn-danger btn-sm" onclick="Students.removeFromList('${s.studentId}', '${categoryId}')">
+              Remove
+            </button>
+          </div>
         </td>
       </tr>
     `).join('');
