@@ -52,6 +52,16 @@
             <td>${isNotParticipating ? '<span class="badge warning">Not Participating</span>' : '<span class="badge success">Walking</span>'}</td>
             <td>${cordBadges}</td>
             <td>${adminBadges}</td>
+            <td>
+              <div class="row-actions">
+                <button class="btn btn-secondary btn-sm" onclick="Students.openEditModal('${s.studentId}')">
+                  Edit
+                </button>
+                <button class="btn btn-danger btn-sm" onclick="Students.deleteStudent('${s.studentId}')">
+                  Delete
+                </button>
+              </div>
+            </td>
           </tr>
         `;
       }).join('');
@@ -59,7 +69,15 @@
 
     // 2. UPDATED RENDER FUNCTION
     function renderStudentList(container, viewType = 'all') {
-      const allStudents = App.getStudents();
+      // Fetch students and IMMEDIATELY filter out Staff, Aides, and JH
+      const allStudents = App.getStudents().filter(student => {
+          const isStaff = String(student.studentId).startsWith('STAFF-');
+          const note = student.Notes ? String(student.Notes).trim().toUpperCase() : '';
+          
+          // Keep the student ONLY if they are NOT staff, NOT a JH, and NOT an Aide
+          return !isStaff && note !== 'JH' && note !== 'A';
+      });
+      
       const categories = App.getCategories();
 
       // 1. Calculate stats dynamically
@@ -83,10 +101,6 @@
         <div class="page-header">
           <div class="page-title-block">
             <h1>${title}</h1>
-            <p>
-              <strong>Walking:</strong> ${walking.length} | 
-              <strong>Not Participating:</strong> ${notParticipating.length}
-            </p>
           </div>
           <div class="header-actions">
             <input type="text" id="student-search" class="form-input" placeholder="Search..." oninput="Students.handleSearch()" style="width: 200px;">
@@ -101,6 +115,7 @@
                 <th>Status</th>
                 <th>Cords</th>
                 <th>Administrative</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>${_generateTableRows(displayStudents, categories)}</tbody>
@@ -167,6 +182,55 @@
             UI.toast('Student deleted', 'success');
           }
         } catch(err) { UI.toast(err.message, 'error'); }
+      });
+    }
+
+    function removeFromList(studentId, categoryId) {
+      const categoryLabel = App.getCategories().find(c => c.id === categoryId)?.label || categoryId;
+      
+      UI.confirm(`Are you sure you want to remove this student from the ${categoryLabel} list?`, async () => {
+        try {
+          const student = App.getStudents().find(s => s.studentId == studentId);
+          if (!student) return UI.toast('Student not found', 'error');
+
+          // 1. Build the payload exactly how the Edit modal does it
+          const payload = { 
+            studentId: student.studentId,
+            firstName: student.firstName,
+            lastName: student.lastName,
+            nonGrad: student['nongrad'] || false,
+            notWalking: student['notwalking'] || false
+          };
+
+          // 2. Carry over all existing category checkboxes
+          App.getCategories().forEach(c => { 
+            payload[c.id] = student[c.id] || student[c.label] || false; 
+          });
+
+          // 3. Force the specific category we are currently viewing to FALSE
+          if (categoryId === 'nongrad') payload.nonGrad = false;
+          else if (categoryId === 'notwalking') payload.notWalking = false;
+          else payload[categoryId] = false;
+
+          // 4. Send the update to the server
+          const res = await App.Server.updateStudent(studentId, payload);
+          
+          if(res.success) {
+            // Update local memory so the table refreshes seamlessly
+            if (categoryId === 'nongrad') student['nongrad'] = false;
+            else if (categoryId === 'notwalking') student['notwalking'] = false;
+            else { student[categoryId] = false; student[categoryLabel] = false; }
+            
+            App.upsertStudent(student);
+            UI.closeModal(); // Closes the confirmation dialog
+            UI.navigate(App.getState().currentView); // Refreshes the table
+            UI.toast('Removed from list', 'success');
+          } else {
+             throw new Error(res.error || 'Failed to update');
+          }
+        } catch(err) { 
+          UI.toast(err.message, 'error'); 
+        }
       });
     }
 
@@ -239,6 +303,7 @@
       openEditModal, 
       saveStudent, 
       deleteStudent, 
+      removeFromList,
       showFiltered, 
       openBulkAddModal, 
       processBulkAdd,
