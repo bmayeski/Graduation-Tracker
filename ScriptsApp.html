@@ -114,11 +114,14 @@ const App = (() => {
     updateStudent:      (id, p) => runServer('StudentService.updateStudent', id, p),
     deleteStudent:      (id) => runServer('StudentService.deleteStudent', id),
     bulkAssignCategory: (ids, cat) => runServer('StudentService.bulkAssignCategory', ids, cat),
-    getSeatingChart:    () => runServer('SeatingService.getSeatingConfig'),
-    generateSeating:    (overwrite) => runServer('SeatingService.generateSeatingAssignments', overwrite),
+    getSeatingChart:    () => runServer('SeatingService.getSeatingChart'),
+    generateSeating:    (overwriteAll) => runServer('SeatingService.generateSeatingAssignments', overwriteAll),
+    saveSeatingConfig:  (config) => runServer('SeatingService.saveSeatingConfig', config),
     toggleCategoryNav:  (id, show) => runServer('CategoryService.toggleSidebar', id, show),
     addCategory:        (p) => runServer('CategoryService.addCategory', p),
-    deleteCategory:     (id) => runServer('CategoryService.deleteCategory', id)
+    deleteCategory:     (id) => runServer('CategoryService.deleteCategory', id),
+    assignSeatManually: (row, seat, val, prevId) => runServer('SeatingService.assignSeatManually', row, seat, val, prevId),
+    assignJHRowK:       () => runServer('SeatingService.assignJuniorHonorsToRowK'),
   };
 
   // ── Return Public API ──────────────────────────────────────
