@@ -19,18 +19,32 @@ const StudentService = (() => {
     if (data.length <= 1) return [];
     
     const headers = data[0];
+    const seatRowIdx = headers.indexOf('Seat Row');
+    const seatNumIdx = headers.indexOf('Seat Number');
+
     return data.slice(1).map(row => {
       let obj = { 
         studentId: String(row[0]), 
         lastName:  row[1], 
-        firstName: row[2] 
+        firstName: row[2],
+        // Explicitly map these so the Seating Chart can find them
+        seatRow: seatRowIdx >= 0 ? String(row[seatRowIdx]) : '',
+        seatNumber: seatNumIdx >= 0 ? String(row[seatNumIdx]) : ''
       };
       
       headers.forEach((h, i) => {
         if(i > 2) {
-          // Normalize to boolean: matches true, 'true', 'TRUE', or 1
-          const val = row[i];
-          obj[h] = (val === true || String(val).toUpperCase() === 'TRUE' || val === 1);
+          // Do NOT convert text columns into booleans
+          if (['Seat Row', 'Seat Number', 'Not Walking Reason', 'Notes', 'Added By', 'Timestamp'].includes(h)) {
+             // Convert Dates to strings so Apps Script doesn't silently return null payloads
+             let val = row[i];
+             if (val instanceof Date) { val = val.toLocaleString(); }
+             obj[h] = val;
+          } else {
+             // It's a category cord/program, so safely convert to boolean
+             const val = row[i];
+             obj[h] = (val === true || String(val).toUpperCase() === 'TRUE' || val === 1);
+          }
         }
       });
       return obj;
@@ -69,7 +83,17 @@ const StudentService = (() => {
   }
 
   function getStats() {
-    const students = getAllStudents();
+    let students = getAllStudents();
+
+    // --- NEW GATEKEEPER FILTER ---
+    // Remove Staff, Aides, and JH from the math so graduation counts are 100% accurate
+    students = students.filter(student => {
+        const isStaff = String(student.studentId).startsWith('STAFF-');
+        const note = student.Notes ? String(student.Notes).trim().toUpperCase() : '';
+        return !isStaff && note !== 'JH' && note !== 'A';
+    });
+    // -----------------------------
+
     const sheet = _sheet();
     const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
     
